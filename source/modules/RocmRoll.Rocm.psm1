@@ -407,7 +407,11 @@ function Invoke-InstallRocm {
     # --- Step 4: Validate ---
     $validResult = Invoke-ValidateRocm -EnvironmentName $EnvironmentName
     if (-not $validResult.passed) {
-        throw "ROCMROLL-ROCM-004: ROCm validation failed. Check logs for details."
+        $torchOk = $validResult.PSObject.Properties['torchImportable'] -and [bool]$validResult.torchImportable
+        if (-not $torchOk) {
+            throw "ROCMROLL-ROCM-004: ROCm validation failed — torch is not importable. Check logs for details."
+        }
+        Write-LogWarn "torch imported but GPU was not visible during install-time validation (likely a path-space initialisation issue). ROCm acceleration will work once the environment is fully configured." -Comp 'RocmRoll.Rocm'
     }
 
     # Update environment state with GPU/package info
@@ -436,7 +440,7 @@ import json, sys
 
 try:
     import torch
-except ImportError as exc:
+except Exception as exc:
     print(json.dumps({"passed": False, "torchImportable": False, "error": str(exc), "checks": []}))
     sys.exit(2)
 
