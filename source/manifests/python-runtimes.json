@@ -1,0 +1,26 @@
+{
+  "versions": [
+    {
+      "version": "3.12.10",
+      "default": true,
+      "embedUrl": "https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip",
+      "fullUrl": "https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.zip",
+      "embedSha256": null,
+      "fullSha256": null,
+      "embedSize": null,
+      "fullSize": null,
+      "pthTemplate": "python312._pth.tpl"
+    }
+    ,{
+      "version": "3.13.14",
+      "default": false,
+      "embedUrl": "https://www.python.org/ftp/python/3.13.14/python-3.13.14-embed-amd64.zip",
+      "fullUrl": "https://www.python.org/ftp/python/3.13.14/python-3.13.14-amd64.zip",
+      "embedSha256": null,
+      "fullSha256": null,
+      "embedSize": null,
+      "fullSize": null,
+      "pthTemplate": "python313._pth.tpl"
+    }
+  ]
+}

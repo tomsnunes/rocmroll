@@ -1,0 +1,28 @@
+{
+  "default": [
+    {
+      "name": "ComfyUI-Manager",
+      "repo": "https://github.com/Comfy-Org/ComfyUI-Manager",
+      "ref": "main",
+      "installRequirements": true
+    },
+    {
+      "name": "CFZ-SwitchMenu",
+      "repo": "https://github.com/patientx/CFZ-SwitchMenu.git",
+      "ref": "main",
+      "installRequirements": true
+    },
+    {
+      "name": "CFZ-Caching",
+      "repo": "https://github.com/patientx/CFZ-Caching",
+      "ref": "main",
+      "installRequirements": true
+    },
+    {
+      "name": "ComfyUI-HFRemoteVae",
+      "repo": "https://github.com/kijai/ComfyUI-HFRemoteVae",
+      "ref": "main",
+      "installRequirements": true
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate PowerShell (PSScriptAnalyzer)
+        shell: pwsh
+        run: |
+          Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser -ErrorAction Stop
+          $results = Invoke-ScriptAnalyzer -Path source/ -Recurse -Severity Error
+          if ($results) {
+            $results | Format-Table -AutoSize
+            Write-Error "PSScriptAnalyzer found $($results.Count) error(s)."
+            exit 1
+          }
+          Write-Host "PSScriptAnalyzer: no errors found."
+
+      - name: Validate JSON manifests
+        shell: pwsh
+        run: |
+          $failed = @()
+          Get-ChildItem source/manifests/*.json | ForEach-Object {
+            try {
+              Get-Content $_.FullName -Raw | ConvertFrom-Json -ErrorAction Stop | Out-Null
+              Write-Host "OK: $($_.Name)"
+            } catch {
+              Write-Warning "INVALID: $($_.Name) — $_"
+              $failed += $_.Name
+            }
+          }
+          if ($failed.Count -gt 0) {
+            Write-Error "Invalid JSON in: $($failed -join ', ')"
+            exit 1
+          }

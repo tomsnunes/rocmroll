@@ -1,0 +1,72 @@
+{
+  "stable": {
+    "description": "Pinned AMD-recommended ROCm 7.2.1 profile with stable ComfyUI release",
+    "defaultProfile": "stable",
+    "comfyui": {
+      "source": "git",
+      "repo": "https://github.com/Comfy-Org/ComfyUI.git",
+      "ref": "v0.24.0",
+      "pinCommit": null
+    },
+    "python": {
+      "version": "3.12.10"
+    },
+    "rocm": {
+      "source": "directUrls",
+      "version": "7.2.1",
+      "torchVersion": "2.9.1+rocm7.2.1",
+      "torchvisionVersion": "0.24.1+rocm7.2.1",
+      "torchaudioVersion": "2.9.1+rocm7.2.1",
+      "pythonTag": "cp312",
+      "allowPreRelease": false,
+      "directUrls": {
+        "sdk": [
+          "https://repo.radeon.com/rocm/windows/rocm-rel-7.2.1/rocm_sdk_core-7.2.1-py3-none-win_amd64.whl",
+          "https://repo.radeon.com/rocm/windows/rocm-rel-7.2.1/rocm_sdk_devel-7.2.1-py3-none-win_amd64.whl",
+          "https://repo.radeon.com/rocm/windows/rocm-rel-7.2.1/rocm_sdk_libraries_custom-7.2.1-py3-none-win_amd64.whl",
+          "https://repo.radeon.com/rocm/windows/rocm-rel-7.2.1/rocm-7.2.1.tar.gz"
+        ],
+        "torch": [
+          "https://repo.radeon.com/rocm/windows/rocm-rel-7.2.1/torch-2.9.1+rocm7.2.1-cp312-cp312-win_amd64.whl",
+          "https://repo.radeon.com/rocm/windows/rocm-rel-7.2.1/torchvision-0.24.1+rocm7.2.1-cp312-cp312-win_amd64.whl",
+          "https://repo.radeon.com/rocm/windows/rocm-rel-7.2.1/torchaudio-2.9.1+rocm7.2.1-cp312-cp312-win_amd64.whl"
+        ]
+      }
+    },
+    "packages": {
+      "tritonWindows": "3.6.0.post25",
+      "sageAttention": "1.0.6"
+    }
+  },
+  "nightly": {
+    "description": "Latest ROCm/TheRock and latest ComfyUI master",
+    "defaultProfile": "optimized",
+    "comfyui": {
+      "source": "git",
+      "repo": "https://github.com/Comfy-Org/ComfyUI.git",
+      "ref": "master",
+      "pinCommit": null
+    },
+    "python": {
+      "version": "3.12.10"
+    },
+    "rocm": {
+      "source": "index",
+      "indexBase": "https://rocm.nightlies.amd.com/v2",
+      "allowPreRelease": true,
+      "packageSet": "latest",
+      "torchPackages": [
+        "torch",
+        "torchvision",
+        "torchaudio"
+      ],
+      "rocmPackages": [
+        "rocm[libraries,devel]"
+      ]
+    },
+    "packages": {
+      "tritonWindows": "3.6.0.post25",
+      "sageAttention": "1.0.6"
+    }
+  }
+}

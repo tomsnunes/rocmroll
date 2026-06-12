@@ -1,0 +1,63 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate PowerShell (PSScriptAnalyzer)
+        shell: pwsh
+        run: |
+          Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser -ErrorAction Stop
+          $results = Invoke-ScriptAnalyzer -Path source/ -Recurse -Severity Error
+          if ($results) {
+            $results | Format-Table -AutoSize
+            Write-Error "PSScriptAnalyzer found $($results.Count) error(s). Aborting release."
+            exit 1
+          }
+          Write-Host "PSScriptAnalyzer: no errors found."
+
+      - name: Validate JSON manifests
+        shell: pwsh
+        run: |
+          $failed = @()
+          Get-ChildItem source/manifests/*.json | ForEach-Object {
+            try {
+              Get-Content $_.FullName -Raw | ConvertFrom-Json -ErrorAction Stop | Out-Null
+              Write-Host "OK: $($_.Name)"
+            } catch {
+              Write-Warning "INVALID: $($_.Name) — $_"
+              $failed += $_.Name
+            }
+          }
+          if ($failed.Count -gt 0) {
+            Write-Error "Invalid JSON in: $($failed -join ', ')"
+            exit 1
+          }
+
+      - name: Package release artifact
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $items = @('source', 'profiles', 'docs', 'rocmroll.bat', 'README.md', 'LICENSE', 'CONTRIBUTING.md', 'FAQ.md', 'TROUBLESHOOTING.md')
+          $existing = $items | Where-Object { Test-Path $_ }
+          Compress-Archive -Path $existing -DestinationPath "rocmroll-$tag.zip" -ErrorAction Stop
+          Write-Host "Packaged: rocmroll-$tag.zip ($([Math]::Round((Get-Item "rocmroll-$tag.zip").Length / 1KB, 1)) KB)"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: rocmroll-*.zip

@@ -1,0 +1,26 @@
+{
+  "name": "stable",
+  "description": "AMD baseline profile matching the official ComfyUI standalone launcher. Minimal environment variables, no acceleration packages forced. Use this as a clean baseline or for troubleshooting.",
+  "version": "1.0",
+  "defaultForChannels": ["stable"],
+  "env": {
+    "PYTHONUNBUFFERED": "1",
+    "PYTHONIOENCODING": "utf-8",
+    "PYTHONUTF8": "1"
+  },
+  "launchArgs": [
+    "--disable-api-nodes",
+    "--preview-method", "auto",
+    "--enable-manager-legacy-ui"
+  ],
+  "legacyGpuOverrides": {
+    "env": {
+      "TORCH_BACKENDS_CUDA_FLASH_SDP_ENABLED": "0",
+      "TORCH_BACKENDS_CUDA_MEM_EFF_SDP_ENABLED": "0",
+      "TORCH_BACKENDS_CUDA_MATH_SDP_ENABLED": "1"
+    },
+    "launchArgs": [
+      "--use-quad-cross-attention"
+    ]
+  }
+}

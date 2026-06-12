@@ -1,0 +1,27 @@
+{
+  "name": "stable-dynamic-vram",
+  "description": "AMD baseline profile with dynamic VRAM management enabled. Matches the official ComfyUI standalone launcher with --enable-dynamic-vram. Recommended for GPUs with 8 GB VRAM or less when running larger models.",
+  "version": "1.0",
+  "defaultForChannels": [],
+  "env": {
+    "PYTHONUNBUFFERED": "1",
+    "PYTHONIOENCODING": "utf-8",
+    "PYTHONUTF8": "1"
+  },
+  "launchArgs": [
+    "--disable-api-nodes",
+    "--preview-method", "auto",
+    "--enable-manager-legacy-ui",
+    "--enable-dynamic-vram"
+  ],
+  "legacyGpuOverrides": {
+    "env": {
+      "TORCH_BACKENDS_CUDA_FLASH_SDP_ENABLED": "0",
+      "TORCH_BACKENDS_CUDA_MEM_EFF_SDP_ENABLED": "0",
+      "TORCH_BACKENDS_CUDA_MATH_SDP_ENABLED": "1"
+    },
+    "launchArgs": [
+      "--use-quad-cross-attention"
+    ]
+  }
+}

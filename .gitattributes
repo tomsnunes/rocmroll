@@ -1,0 +1,33 @@
+* text=auto eol=crlf
+
+*.ps1 text eol=crlf
+*.psm1 text eol=crlf
+*.psd1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.py text eol=crlf
+*.md text eol=crlf
+*.json text eol=crlf
+*.yaml text eol=crlf
+*.yml text eol=crlf
+*.tpl text eol=crlf
+*.txt text eol=crlf
+
+*.zip binary
+*.7z binary
+*.tar binary
+*.gz binary
+*.whl binary
+*.exe binary
+*.dll binary
+*.pyd binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.safetensors binary
+*.ckpt binary
+*.pt binary
+*.bin binary

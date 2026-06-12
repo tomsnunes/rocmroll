@@ -1,0 +1,78 @@
+# macOS
+.DS_Store
+
+# AI
+.ai
+.claude
+
+# Dev
+.dev
+
+# ComfyUI
+/custom_nodes/
+.comfy_environment
+
+# IDE
+/.vs
+.vscode/
+.idea/
+
+# Python
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+*.pyc
+*.py[cod]
+
+# Python virtual environments
+venv/
+.venv/
+env/
+python_env/
+
+# UV
+uv.lock
+
+# State
+/.state/
+
+# Shared Models
+/shared/input/
+/shared/output/
+/shared/models/
+/shared/workflows/
+
+# Temporary files
+/.temp/
+/temp/
+
+# Cache files
+/.cache/
+/.cache/git/
+/.cache/pip/
+/.cache/triton/
+/.cache/tunableop/
+/.cache/wheelhouse/
+
+# Instances
+/instances/
+
+# Environments
+/environments/
+
+# Runtimes
+/runtimes/
+
+# Launchers
+/launchers/
+
+# Logs
+/logs/
+*.log
+
+# Examples
+/examples/
+
+# ROCmRoll
+rocmroll.ini

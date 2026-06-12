@@ -1,0 +1,16 @@
+{
+  "stable": {
+    "description": "Stable ComfyUI release tracking",
+    "repo": "https://github.com/Comfy-Org/ComfyUI.git",
+    "branch": "master",
+    "pinCommit": null,
+    "requirementsFile": "requirements.txt"
+  },
+  "nightly": {
+    "description": "Nightly ComfyUI master tracking",
+    "repo": "https://github.com/Comfy-Org/ComfyUI.git",
+    "branch": "master",
+    "pinCommit": null,
+    "requirementsFile": "requirements.txt"
+  }
+}
