@@ -139,6 +139,8 @@ Try: 'D:\T2IAI\ComfyUI --help'
 
 **Workaround (automatic):** ROCmRoll sets the `ROCM_SDK_TARGET_FAMILY` environment variable to the GPU family it detected itself (for example `gfx103X-dgpu`), both during install-time validation and in generated launchers. `rocm_sdk` honours this variable and skips the broken `offload-arch.exe` detection entirely.
 
+The variable is only set when the installed distribution actually ships that family (`rocm_sdk` raises `ValueError` otherwise). The stable channel's direct-URL wheels ship a single family named `custom`, so the variable is intentionally not set there - single-family distributions resolve correctly on their own.
+
 **If you see this on an existing instance,** regenerate the launcher to pick up the workaround:
 
 ```powershell

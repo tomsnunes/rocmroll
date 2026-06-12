@@ -347,9 +347,10 @@ function Invoke-InstallRocm {
     $env:PIP_DISABLE_PIP_VERSION_CHECK = '1'
     $env:PIP_NO_INPUT                  = '1'
     $env:PIP_REQUIRE_VIRTUALENV        = 'false'
-    # Bypass rocm_sdk's offload-arch GPU discovery (spawns an unquoted exe path
-    # that breaks on space-containing install paths) for rocm-sdk init below.
-    if ($RocmIndex) { $env:ROCM_SDK_TARGET_FAMILY = $RocmIndex }
+    # Do NOT set ROCM_SDK_TARGET_FAMILY here: the rocm sdist's setup.py calls
+    # determine_target_family() at build time and hard-fails on any value the
+    # distribution does not ship (stable direct-URL wheels only ship 'custom').
+    # Validation and launchers seed it behind a membership check instead.
 
     if ($installPlan.sdkArgs.Count -gt 0) {
         Write-LogInfo "Installing ROCm SDK packages from AMD direct URLs" -Comp 'RocmRoll.Rocm' -Op 'InstallRocmSdk' -Inst $EnvironmentName
