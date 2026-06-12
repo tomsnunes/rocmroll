@@ -482,7 +482,15 @@ print(json.dumps({
     $tmpPy = [System.IO.Path]::ChangeExtension([System.IO.Path]::GetTempFileName(), '.py')
     try {
         [System.IO.File]::WriteAllText($tmpPy, $pyScript, [System.Text.Encoding]::UTF8)
-        $output = & $pythonExe $tmpPy 2>$null
+        $prevEap = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            $combined = & $pythonExe $tmpPy 2>&1
+        } finally {
+            $ErrorActionPreference = $prevEap
+        }
+        # Keep only stdout; rocm_sdk_core may spawn a wrong exe via unquoted space-containing path, flooding stderr.
+        $output = $combined | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] }
     } finally {
         Remove-Item $tmpPy -ErrorAction SilentlyContinue
     }
