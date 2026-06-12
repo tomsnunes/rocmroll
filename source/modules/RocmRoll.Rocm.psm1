@@ -427,6 +427,10 @@ function Invoke-ValidateRocm {
 
     $pythonExe = Get-EnvironmentPython -Name $EnvironmentName
 
+    if (-not (Test-Path $pythonExe)) {
+        return [pscustomobject]@{ passed = $false; torchImportable = $false; error = "Python not found: $pythonExe" }
+    }
+
     $pyScript = @'
 import json, sys
 
@@ -494,10 +498,15 @@ print(json.dumps({
     } finally {
         Remove-Item $tmpPy -ErrorAction SilentlyContinue
     }
+    # Find the last stdout line that looks like a JSON object; Python may emit torch noise before it.
+    $jsonLine = @($output) | Where-Object { $_ -match '^\s*\{' } | Select-Object -Last 1
+    if (-not $jsonLine) {
+        return [pscustomobject]@{ passed = $false; torchImportable = $false; error = 'Python validation produced no JSON output' }
+    }
     try {
-        return $output | ConvertFrom-Json
+        return $jsonLine | ConvertFrom-Json
     } catch {
-        return @{ passed = $false; error = "ROCm validation returned invalid JSON: $_" }
+        return [pscustomobject]@{ passed = $false; error = "ROCm validation returned invalid JSON: $_" }
     }
 }
 
