@@ -372,11 +372,13 @@ GPU architecture mapping lives in `source\manifests\rocm-architectures.json` and
 | `gfx1152` | `gfx1152` | RDNA 3.5 / Krackan Point | Radeon 860M, 840M, 820M | yes |
 | `gfx1153` | `gfx1153` | RDNA 3.5 | — | yes |
 | `gfx110X` | `gfx110X-all` | RDNA 3 | RX 7900, RX 7800, RX 7700, RX 7600, W7900, W7800, W7700, Radeon 780M, 760M, 740M | yes |
-| `gfx103X` | `gfx103X-dgpu` | RDNA 2 (dGPU) | RX 6950, RX 6900, RX 6800, RX 6700, RX 6600, RX 6500, W6800, V620 | no |
-| `gfx101X` | `gfx101X-dgpu` | RDNA 1 | RX 5700, RX 5600, RX 5500, Radeon Pro V520 | no |
+| `gfx103X` | `gfx103X-all` | RDNA 2 (dGPU) | RX 6950, RX 6900, RX 6800, RX 6700, RX 6600, RX 6500, W6800, V620 | yes |
+| `gfx101X` | `gfx101X-dgpu` | RDNA 1 | RX 5700, RX 5600, RX 5500, Radeon Pro V520 | yes |
 | `gfx90X` | `gfx90X-dcgpu` | Radeon Pro VII | Radeon Pro VII | no |
 | `gfx94X` | `gfx94X-dcgpu` | MI300 / MI325 | MI300A, MI300X, MI325X | no |
 | `gfx950` | `gfx950-dcgpu` | MI350 / MI355 | MI350X, MI355X | yes |
+
+> **Note — RDNA 1/2 (`gfx101X`, `gfx103X`):** AMD's official Windows release wheels do not support these families, and torch wheels for them are only published on AMD's staging nightly index (`https://rocm.nightlies.amd.com/v2-staging/`). ROCmRoll therefore routes these families to the staging index automatically — on **both** channels, including `stable`. This is configured per family via the `sourceOverride` key in `source\manifests\rocm-architectures.json`.
 
 Manual override example:
 

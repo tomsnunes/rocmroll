@@ -84,6 +84,32 @@ function Get-RocmProfileForChannel {
     return $rocmProfile
 }
 
+function Get-RocmArchitectureSourceOverride {
+    <#
+    .SYNOPSIS
+        Returns the per-family ROCm source override from rocm-architectures.json,
+        or $null. Used for families (e.g. RDNA 1/2) whose torch wheels are only
+        published on a different index than the channel default.
+    #>
+    param([string]$RocmIndex)
+
+    if (-not $RocmIndex) { return $null }
+
+    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force -Global
+
+    $cfg = Get-Config
+    $manifestPath = Join-Path $cfg.ManifestsFolder 'rocm-architectures.json'
+    if (-not (Test-Path $manifestPath)) { return $null }
+
+    $manifest = Get-Content $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    # Family key is the index name without the -all/-dgpu/-dcgpu suffix (gfx103X-dgpu -> gfx103X).
+    $familyKey = ($RocmIndex -split '-')[0]
+    $family = Get-RocmObjectValue -InputObject $manifest -PropertyName $familyKey
+    if (-not $family) { return $null }
+
+    return Get-RocmObjectValue -InputObject $family -PropertyName 'sourceOverride'
+}
+
 function New-RocmIndexProfile {
     param([switch]$AllowPreRelease)
 
@@ -298,6 +324,21 @@ function Invoke-InstallRocm {
 
     $cfg        = Get-Config
     $pythonExe  = Get-EnvironmentPython -Name $EnvironmentName
+
+    # Per-family source override: some families (RDNA 1/2) have torch wheels only
+    # on the staging nightly index, regardless of the requested channel.
+    $sourceOverride = Get-RocmArchitectureSourceOverride -RocmIndex $RocmIndex
+    if ($sourceOverride) {
+        $overrideIndex = [string](Get-RocmObjectValue -InputObject $sourceOverride -PropertyName 'index' -DefaultValue $RocmIndex)
+        $overrideBase  = [string](Get-RocmObjectValue -InputObject $sourceOverride -PropertyName 'indexBase' -DefaultValue '')
+        $overridePre   = [bool](Get-RocmObjectValue -InputObject $sourceOverride -PropertyName 'allowPreRelease' -DefaultValue $true)
+        $overrideReason = [string](Get-RocmObjectValue -InputObject $sourceOverride -PropertyName 'reason' -DefaultValue '')
+        Write-LogWarn "GPU family source override for '$RocmIndex': installing from index '$overrideIndex'$(if ($overrideBase) { " at $overrideBase" }). $overrideReason" -Comp 'RocmRoll.Rocm' -Op 'InstallRocm' -Inst $EnvironmentName
+        $RocmIndex = $overrideIndex
+        $RocmProfile = New-RocmIndexProfile -AllowPreRelease:$overridePre
+        if ($overrideBase) { $RocmProfile.indexBase = $overrideBase }
+    }
+
     $wheelhouse = if ($RocmIndex) { Join-Path $cfg.WheelhouseFolder $RocmIndex } else { '' }
     $useWheelhouse = $RocmIndex -and (Test-WheelhouseHasWheels -WheelhouseFolder $wheelhouse)
 

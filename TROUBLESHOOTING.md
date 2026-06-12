@@ -17,6 +17,7 @@ When something goes wrong, always run diagnostics first:
 - [Git Not Found](#git-not-found)
 - [GPU Not Detected](#gpu-not-detected)
 - [ROCm Install Fails](#rocm-install-fails)
+- [GPU Not Available on RDNA 2 and RDNA 1](#gpu-not-available-on-rdna-2-and-rdna-1)
 - [GPU Not Visible When Install Path Contains Spaces](#gpu-not-visible-when-install-path-contains-spaces)
 - [Torch Import Fails After Install](#torch-import-fails-after-install)
 - [ComfyUI Fails to Start](#comfyui-fails-to-start)
@@ -123,6 +124,24 @@ ERROR ROCMROLL-ROCM-003: pip install failed for torch.
 | `No matching distribution found` | Your GPU may require `--pre` for pre-release packages |
 | `Connection timeout` | Network issue or AMD server down — retry later |
 | Partial wheel download stuck | `.\rocmroll.bat cache clean --all` |
+
+---
+
+## GPU Not Available on RDNA 2 and RDNA 1
+
+**Symptom:** Install completes (possibly with a warning that the GPU was not visible during validation), but `torch.cuda.is_available()` is `False` and ComfyUI runs on CPU. Affects RX 6000 series (RDNA 2, `gfx103X`) and RX 5000 series (RDNA 1, `gfx101X`).
+
+**Cause:** AMD's official ROCm Windows release wheels (the stable channel's direct URLs) only support RDNA 3 and RDNA 4 GPUs. They install without error on RDNA 1/2 systems but never detect the GPU. Additionally, AMD's regular nightly index (`v2`) does not publish torch wheels for these families - they exist only on the staging nightly index (`v2-staging`).
+
+**Fix (automatic):** ROCmRoll routes `gfx103X` and `gfx101X` to the staging nightly index on both channels via the `sourceOverride` key in `source\manifests\rocm-architectures.json`. If your instance was installed before this fix, re-run the install (it converges) or repair the ROCm component:
+
+```powershell
+.\rocmroll.bat repair --instance rocm-stable --component rocm
+.\rocmroll.bat repair --instance rocm-stable --component launchers
+.\rocmroll.bat rocm validate --instance rocm-stable
+```
+
+**Note:** Staging nightly wheels are pre-release builds and inherit nightly volatility, even on the stable channel. This is currently the only way to get GPU acceleration on RDNA 1/2 under Windows.
 
 ---
 
