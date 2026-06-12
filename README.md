@@ -45,7 +45,6 @@ ROCmRoll targets:
 - Windows only
 - PowerShell 5.1 or newer
 - Git available in `PATH`
-- `curl.exe` available in `PATH`
 - An AMD Radeon GPU mapped in `source\manifests\rocm-architectures.json`, or a manual `--gfx` override
 - AMD graphics driver installed
 - Long path support enabled in Windows is strongly recommended

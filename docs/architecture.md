@@ -1367,8 +1367,6 @@ It should check:
 Operating system
 PowerShell version
 Git availability
-curl.exe availability
-tar availability
 Path safety
 ASCII-only path warning
 Long path warning

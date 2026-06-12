@@ -137,10 +137,6 @@ function Invoke-Doctor {
         $badPath = $cfg.RootFolder -match '[^\x00-\x7F]'
         & $Add 'path_ascii_only' (-not $badPath) $cfg.RootFolder 'Avoid non-ASCII characters in the root path'
 
-        # curl.exe
-        $curlVer = (& curl.exe --version 2>$null | Select-Object -First 1)
-        $curlDetail = if ($curlVer) { $curlVer } else { 'not found' }
-        & $Add 'curl_available' ($LASTEXITCODE -eq 0) $curlDetail
     }
 
     # --- GPU checks ---
