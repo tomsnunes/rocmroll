@@ -344,6 +344,7 @@ Multiple fast options can be combined: `"--fast", "fp16_accumulation,autotune"`.
 | `TRITON_PRINT_AUTOTUNING` | Print Triton autotuning results (`1` = on) |
 | `TRITON_CACHE_AUTOTUNING` | Cache Triton autotuning results (`1` = on) |
 | `PYTORCH_TUNABLEOP_ENABLED` | Enable PyTorch TunableOp (`1` = on) |
+| `PYTORCH_MIOPEN_SUGGEST_NHWC` | Prefer NHWC memory layout for MIOpen convolutions (`1` = on) |
 
 #### ComfyUI Triton Backend
 
@@ -361,7 +362,7 @@ Multiple fast options can be combined: `"--fast", "fp16_accumulation,autotune"`.
 
 ## Supported GPU Families
 
-Currently supported GPUs are GCN5 /Vega, RDNA1, RDNA2 , RDNA3 and RDNA4.
+Currently supported GPU architectures span RDNA 1–4, RDNA 3.5 (Strix Point / Strix Halo / Krackan Point integrated GPUs), Radeon Pro VII (Vega/GCN5), and AMD Instinct MI300/MI325/MI350/MI355 series (CDNA).
 GPU architecture mapping lives in `source\manifests\rocm-architectures.json` and is used by `RocmRoll.Hardware`.
 
 | GFX family | ROCm index | Architecture | Example devices | Pre-release required |
@@ -774,7 +775,7 @@ The launcher:
 - Starts ComfyUI on `127.0.0.1:8188` unless another port is provided
 - Writes launch output to `logs\launch`
 
-Default launch arguments include:
+The launcher template always includes these fixed arguments:
 
 ```text
 --listen 127.0.0.1
@@ -783,18 +784,28 @@ Default launch arguments include:
 --input-directory  <root>\shared\input
 --output-directory <root>\shared\output
 --temp-directory   <root>\shared\temp
---disable-api-nodes
---disable-smart-memory
---disable-pinned-memory
---preview-method auto
---use-sage-attention
---enable-manager-legacy-ui
---enable-dynamic-vram
 ```
 
 `--user-directory` is intentionally omitted. See [Known ComfyUI Database Error](#known-comfyui-database-error).
 
-Legacy GPU families `gfx101X` and `gfx103X` also receive `--use-quad-cross-attention`.
+The active profile's `launchArgs` are appended after the fixed arguments. For example, the `stable` profile adds:
+
+```text
+--disable-api-nodes
+--preview-method auto
+--enable-manager-legacy-ui
+```
+
+The `optimized` profile (nightly channel default) additionally adds:
+
+```text
+--disable-smart-memory
+--disable-pinned-memory
+--use-sage-attention
+--enable-dynamic-vram
+```
+
+Legacy GPU families `gfx101X` and `gfx103X` also receive `--use-quad-cross-attention` via the profile's `legacyGpuOverrides`.
 
 Generated files should normally be changed through templates or repair commands rather than edited by hand.
 
@@ -978,6 +989,7 @@ The most important modules are:
 | `RocmRoll.State` | Runtime, environment, instance, and global JSON state |
 | `RocmRoll.Locking` | File locks and stale lock handling |
 | `RocmRoll.Download` | Cached downloads, resume, and validation |
+| `RocmRoll.Cache` | Cache inspection, verification, cleanup, and pruning |
 | `RocmRoll.Runtime` | Python runtime creation |
 | `RocmRoll.Environment` | Per-instance Python environments |
 | `RocmRoll.Hardware` | GPU detection wrapper |
@@ -991,6 +1003,8 @@ The most important modules are:
 | `RocmRoll.Doctor` | System/GPU/instance/cache diagnostics |
 | `RocmRoll.Repair` | Component-scoped repair |
 | `RocmRoll.ComfyDesktop` | Optional ComfyUI Desktop registration |
+| `RocmRoll.UI` | Banner, step output, and console formatting |
+| `RocmRoll.Encoding` | UTF-8 NoBOM text file helpers |
 | `RocmRoll.Core` | Full install orchestration |
 
 Specs are under `docs\specs` and are marked accepted. Major behavior changes should be reflected in the relevant spec, manifest, or template as well as the implementation.

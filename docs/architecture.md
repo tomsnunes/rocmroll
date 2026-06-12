@@ -117,10 +117,16 @@ C:\Platform\ai\
 │   │   ├── RocmRoll.Rocm.psm1
 │   │   ├── RocmRoll.ComfyUI.psm1
 │   │   ├── RocmRoll.CustomNodes.psm1
+│   │   ├── RocmRoll.Packages.psm1
 │   │   ├── RocmRoll.Launcher.psm1
+│   │   ├── RocmRoll.Profiles.psm1
 │   │   ├── RocmRoll.State.psm1
+│   │   ├── RocmRoll.Locking.psm1
 │   │   ├── RocmRoll.Validation.psm1
+│   │   ├── RocmRoll.Doctor.psm1
 │   │   ├── RocmRoll.Repair.psm1
+│   │   ├── RocmRoll.ComfyDesktop.psm1
+│   │   ├── RocmRoll.Encoding.psm1
 │   │   └── RocmRoll.UI.psm1
 │   │
 │   │
@@ -129,6 +135,7 @@ C:\Platform\ai\
 │   │   ├── python-runtimes.json
 │   │   ├── rocm-architectures.json
 │   │   ├── package-profiles.json
+│   │   ├── patches.json
 │   │   ├── custom-nodes.json
 │   │   └── comfyui-releases.json
 │   │
@@ -230,7 +237,6 @@ $InstancesFolder    = "$RootFolder\instances"
 $LaunchersFolder    = "$RootFolder\launchers"
 
 $SourceFolder          = "$RootFolder\source"      # always anchored to script — not user-configurable
-$ScriptsFolder      = "$SourceFolder\scripts"
 $ManifestsFolder    = "$SourceFolder\manifests"
 $TemplatesFolder    = "$SourceFolder\templates"
 
@@ -1305,13 +1311,13 @@ rocmroll repair --instance rocm-stable --rollback-patch sageattention-zluda-rdna
 
 ## 27. Launchers
 
-Each instance gets generated launchers.
+Each instance gets generated launchers written to the root `launchers\` directory.
 
 Example:
 
 ```text
-instances\rocm-stable\launch.bat
-instances\rocm-stable\launch.ps1
+launchers\rocm-stable.bat
+launchers\rocm-stable.ps1
 ```
 
 Generated launcher must:
@@ -1447,40 +1453,26 @@ Download algorithm:
 
 ## 31. Spec-driven development structure
 
-Recommended repository structure:
+Repository structure:
 
 ```text
 repo\
-├── specs\
-│   ├── 000-product-vision.md
-│   ├── 001-bootstrap-and-config.md
-│   ├── 002-python-runtime.md
-│   ├── 003-python-environment.md
-│   ├── 004-gpu-detection.md
-│   ├── 005-rocm-installation.md
-│   ├── 006-comfyui-instance.md
-│   ├── 007-custom-nodes.md
-│   ├── 008-launcher.md
-│   ├── 009-doctor-and-repair.md
-│   └── 010-cache-management.md
-│
 ├── docs\
-│   ├── architecture.md
-│   ├── installation.md
-│   ├── commands.md
-│   ├── configuration.md
-│   ├── troubleshooting.md
-│   └── development.md
+│   └── architecture.md
 │
-├── src\
+├── source\
 │   ├── rocmroll.ps1
 │   ├── modules\
-│   └── scripts\
+│   ├── manifests\
+│   └── templates\
 │
-└── tests\
-    ├── unit\
-    ├── integration\
-    └── fixtures\
+├── profiles\
+├── rocmroll.bat
+├── README.md
+├── CONTRIBUTING.md
+├── TROUBLESHOOTING.md
+├── FAQ.md
+└── LICENSE
 ```
 
 Each spec must include:
