@@ -17,7 +17,7 @@ Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Logging.psm1')
 
 # ---------------------------------------------------------------------------
 # JSON formatter (PS5.1 ConvertTo-Json produces double-spaces and alignment
-# indentation — this function always emits clean 2-space indented JSON)
+# indentation - this function always emits clean 2-space indented JSON)
 # ---------------------------------------------------------------------------
 
 function Get-ProfileFieldValue {
@@ -436,7 +436,7 @@ function New-ProfileInteractive {
     Write-Host '  -- Fast Optimizations --' -ForegroundColor Yellow
 
     $validFastOpts = @('fp16_accumulation','fp8_matrix_mult','cublas_ops','autotune')
-    $qFast = (Read-Host '  Fast options — comma-separated from: fp16_accumulation, fp8_matrix_mult, autotune (blank = none)').Trim()
+    $qFast = (Read-Host '  Fast options - comma-separated from: fp16_accumulation, fp8_matrix_mult, autotune (blank = none)').Trim()
     $fastOpts = @()
     if ($qFast) {
         $fastOpts = @($qFast -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -in $validFastOpts })

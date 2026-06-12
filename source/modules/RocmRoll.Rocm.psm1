@@ -412,7 +412,7 @@ function Invoke-InstallRocm {
     if (-not $validResult.passed) {
         $torchOk = $validResult.PSObject.Properties['torchImportable'] -and [bool]$validResult.torchImportable
         if (-not $torchOk) {
-            throw "ROCMROLL-ROCM-004: ROCm validation failed — torch is not importable. Check logs for details."
+            throw "ROCMROLL-ROCM-004: ROCm validation failed - torch is not importable. Check logs for details."
         }
         Write-LogWarn "torch imported but GPU was not visible during install-time validation (likely a path-space initialisation issue). ROCm acceleration will work once the environment is fully configured." -Comp 'RocmRoll.Rocm'
     }
