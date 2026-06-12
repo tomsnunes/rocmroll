@@ -1050,6 +1050,16 @@ GPU and ROCm checks:
 - Make patches explicit, cached, backed up, and reversible.
 - Log external command output with enough context to diagnose failures.
 
+## Credits
+
+ROCmRoll builds on the work of these projects and people:
+
+- [ComfyUI](https://github.com/comfyanonymous/ComfyUI) — the modular Stable Diffusion GUI and inference engine that ROCmRoll installs and manages.
+- [AMD TheRock Team](https://github.com/ROCm/TheRock) — for the ROCm platform and the nightly wheel infrastructure that makes AMD GPU acceleration on Windows possible.
+- [patientx-cfz](https://github.com/patientx-cfz/comfyui-rocm) — for pioneering ComfyUI ROCm setup guides and tooling on Windows that helped shape this project.
+- [0xDELUXA](https://github.com/0xDELUXA) — for early research and tooling around ROCm on Windows that informed this project.
+- [kijai](https://github.com/kijai) — for custom node work and contributions to the ComfyUI ecosystem.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
