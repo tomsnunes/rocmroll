@@ -123,9 +123,6 @@ C:\Platform\ai\
 │   │   ├── RocmRoll.Repair.psm1
 │   │   └── RocmRoll.UI.psm1
 │   │
-│   ├── scripts\
-│   │   ├── gpu_detect.py
-│   │   └── verify_rocm.py
 │   │
 │   ├── manifests\
 │   │   ├── channels.json
@@ -285,7 +282,7 @@ There is no `data` key. All runtime I/O sub-paths (`input\`, `output\`, `temp\`,
 
 Path values may be absolute (`D:\data`) or relative to the root folder. Relative paths are normalised with `GetFullPath`.
 
-Source internal paths (`source\`, `source\modules\`, `source\scripts\`, `source\manifests\`, `source\templates\`) are always resolved relative to `rocmroll.ps1` and are never user-configurable.
+Source internal paths (`source\`, `source\modules\`, `source\manifests\`, `source\templates\`) are always resolved relative to `rocmroll.ps1` and are never user-configurable.
 
 **CLI helpers:**
 
@@ -818,21 +815,9 @@ Stable channel should prefer pinned package versions. Nightly can allow floating
 
 ## 18. GPU detection
 
-The GPU detection script must move from human-output parsing to machine-readable output.
+GPU detection is implemented natively in `RocmRoll.Hardware` (`Invoke-GpuDetect`).
 
-Current behavior to improve:
-
-```text
-detect_gpu.py prints diagnostic text and then prints gfx|arch_index|arch_name.
-```
-
-Recommended behavior:
-
-```powershell
-python source\scripts\gpu_detect.py --json --quiet
-```
-
-Expected stdout:
+`Invoke-GpuDetect` returns a structured object equivalent to:
 
 ```json
 {
@@ -848,7 +833,7 @@ Expected stdout:
 }
 ```
 
-Diagnostics should go to stderr or structured logs, not stdout.
+Diagnostics go to `Write-Host` (stderr-equivalent) and are suppressed when `-Quiet` is passed.
 
 Recommended detection order:
 
@@ -913,7 +898,7 @@ Example `rocm-architectures.json`:
 }
 ```
 
-The Python script can use this manifest, so the GPU table can evolve without editing code.
+`RocmRoll.Hardware` loads this manifest directly, so the GPU table can evolve without editing code.
 
 ## 20. ROCm/PyTorch installation
 
@@ -993,7 +978,7 @@ Initialize SDK:
 Validation:
 
 ```powershell
-python.exe -c "import torch; print(torch.__version__); print(torch.cuda.is_available()); print(torch.version.hip)"
+rocmroll rocm validate --instance <name>
 ```
 
 Acceptance criteria:
@@ -1581,13 +1566,13 @@ rocmroll install --instance rocm-stable creates the Python environment.
 Deliver:
 
 ```text
-gpu_detect.py JSON mode
+Native PowerShell GPU detection (RocmRoll.Hardware)
 Architecture manifest
 ROCm index resolver
 Torch install
 rocm[libraries,devel] install
 rocm-sdk init
-ROCm validation
+ROCm validation (inline Python in RocmRoll.Rocm)
 ```
 
 Acceptance:

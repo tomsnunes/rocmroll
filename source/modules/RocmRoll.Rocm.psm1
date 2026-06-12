@@ -423,18 +423,73 @@ function Invoke-InstallRocm {
 function Invoke-ValidateRocm {
     param([string]$EnvironmentName)
 
-    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1')      -Force -Global
     Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Environment.psm1') -Force -Global
 
-    $cfg       = Get-Config
     $pythonExe = Get-EnvironmentPython -Name $EnvironmentName
-    $script    = Join-Path $cfg.ScriptsFolder 'verify_rocm.py'
 
-    $output = & $pythonExe $script --json --quiet 2>$null
+    $pyScript = @'
+import json, sys
+
+try:
+    import torch
+except ImportError as exc:
+    print(json.dumps({"passed": False, "torchImportable": False, "error": str(exc), "checks": []}))
+    sys.exit(2)
+
+def chk(name, fn):
+    try:
+        return {"check": name, "passed": True, "value": str(fn())}
+    except Exception as exc:
+        return {"check": name, "passed": False, "error": str(exc)}
+
+checks = [{"check": "torch_importable", "passed": True, "value": "ok"}]
+checks.append(chk("torch_version", lambda: torch.__version__))
+
+ca = chk("cuda_available", lambda: torch.cuda.is_available())
+checks.append(ca)
+
+hc = chk("hip_version", lambda: torch.version.hip)
+checks.append(hc)
+
+checks.append(chk("device_count", lambda: torch.cuda.device_count()))
+checks.append(chk("device_name", lambda: torch.cuda.get_device_name(0) if torch.cuda.is_available() and torch.cuda.device_count() > 0 else "N/A"))
+
+def tensor_op():
+    if torch.cuda.is_available():
+        t = torch.tensor([1.0, 2.0], device="cuda")
+        return float(t.sum().item())
+    return "skipped (no CUDA)"
+
+checks.append(chk("tensor_op", tensor_op))
+
+passed_all = (
+    ca.get("value") in ("True", "true") and
+    hc.get("passed") and hc.get("value") and
+    all(r.get("passed", True) for r in checks)
+)
+
+print(json.dumps({
+    "passed": passed_all,
+    "torchImportable": True,
+    "torchVersion": torch.__version__,
+    "hipVersion": getattr(torch.version, "hip", None),
+    "cudaAvailable": torch.cuda.is_available(),
+    "deviceCount": torch.cuda.device_count() if torch.cuda.is_available() else 0,
+    "checks": checks,
+}))
+'@
+
+    $tmpPy = [System.IO.Path]::ChangeExtension([System.IO.Path]::GetTempFileName(), '.py')
+    try {
+        [System.IO.File]::WriteAllText($tmpPy, $pyScript, [System.Text.Encoding]::UTF8)
+        $output = & $pythonExe $tmpPy 2>$null
+    } finally {
+        Remove-Item $tmpPy -ErrorAction SilentlyContinue
+    }
     try {
         return $output | ConvertFrom-Json
     } catch {
-        return @{ passed=$false; error="Invalid JSON from verify_rocm.py: $_" }
+        return @{ passed = $false; error = "ROCm validation returned invalid JSON: $_" }
     }
 }
 

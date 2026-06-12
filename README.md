@@ -31,7 +31,7 @@ Implemented pieces include:
 - Generated `extra_model_paths.yaml`
 - Generated launchers under `launchers\`
 - Shared model and data folders
-- ROCm/PyTorch validation through `verify_rocm.py`
+- ROCm/PyTorch validation via inline Python check in the instance environment
 - `doctor`, `repair`, `list`, `remove`, `cache`, and `logs` commands
 - JSON state files, human logs, JSONL logs, and PID lock files
 - Optional ComfyUI Desktop registration when Desktop is installed
@@ -362,7 +362,7 @@ Multiple fast options can be combined: `"--fast", "fp16_accumulation,autotune"`.
 ## Supported GPU Families
 
 Currently supported GPUs are GCN5 /Vega, RDNA1, RDNA2 , RDNA3 and RDNA4.
-GPU architecture mapping lives in `source\manifests\rocm-architectures.json` and is used by `source\scripts\gpu_detect.py`.
+GPU architecture mapping lives in `source\manifests\rocm-architectures.json` and is used by `RocmRoll.Hardware`.
 
 | GFX family | ROCm index | Architecture | Example devices | Pre-release required |
 | --- | --- | --- | --- | --- |
@@ -423,7 +423,6 @@ Source and documentation:
 rocmroll.bat                  Thin Windows wrapper
 source\rocmroll.ps1              Main CLI entrypoint
 source\modules\                  PowerShell modules
-source\scripts\                  Python helper scripts
 source\manifests\                Channel, runtime, GPU, package, patch, and node manifests
 source\templates\                Generated launcher and ComfyUI config templates
 docs\architecture.md          Full architecture and implementation specification
@@ -697,13 +696,7 @@ ROCm/PyTorch installation is selected by channel:
 
 For index-based installs, if `.cache\wheelhouse\<rocmIndex>\` contains wheels, ROCmRoll adds it as a `--find-links` source.
 
-ROCm validation is performed by:
-
-```text
-source\scripts\verify_rocm.py
-```
-
-It checks:
+ROCm validation is performed by `Invoke-ValidateRocm` in `RocmRoll.Rocm`. It runs an inline Python script inside the instance environment (no separate script file) and checks:
 
 - `torch` import
 - torch version
@@ -716,7 +709,7 @@ It checks:
 Manual validation example:
 
 ```powershell
-.\environments\rocm-stable-py312\python.exe .\source\scripts\verify_rocm.py --json --quiet
+.\rocmroll.bat rocm validate --instance rocm-stable
 ```
 
 ## Custom Nodes
@@ -1021,14 +1014,15 @@ $errors = $null
 $errors
 ```
 
-Python helper checks:
+GPU and ROCm checks:
 
 ```powershell
-python .\source\scripts\gpu_detect.py --json --quiet
-python .\source\scripts\verify_rocm.py --json --quiet
-```
+# Native PowerShell GPU detection (no Python required)
+.\rocmroll.bat doctor --gpu
 
-`verify_rocm.py` must be run with an environment that has ROCm/PyTorch installed.
+# ROCm/PyTorch validation for an installed instance
+.\rocmroll.bat rocm validate --instance rocm-stable
+```
 
 ## Design Principles
 
