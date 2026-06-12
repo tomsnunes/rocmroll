@@ -15,6 +15,7 @@ function Invoke-GenerateLaunchers {
         [string]$InstanceName,
         [string]$EnvironmentName,
         [string]$GfxVersion  = '',
+        [string]$RocmIndex   = '',
         [int]$Port           = 8188,
         [string]$ProfileName = '',
         [string]$Channel     = ''
@@ -34,6 +35,11 @@ function Invoke-GenerateLaunchers {
     $envState = Get-EnvironmentState -Name $EnvironmentName
     if ($envState -and $envState.path) {
         $envFolder = $envState.path
+    }
+
+    if (-not $RocmIndex -and $envState -and $envState.PSObject.Properties['gpu'] -and $envState.gpu) {
+        $indexProperty = $envState.gpu.PSObject.Properties['rocmIndex']
+        if ($indexProperty -and $indexProperty.Value) { $RocmIndex = [string]$indexProperty.Value }
     }
 
     # Resolve default profile from channel manifest when not explicitly provided
@@ -82,6 +88,7 @@ function Invoke-GenerateLaunchers {
             -replace '\{InstanceFolder\}',  $instanceFolder `
             -replace '\{EnvironmentFolder\}', $envFolder `
             -replace '\{GfxVersion\}',      $GfxVersion `
+            -replace '\{RocmIndex\}',       $RocmIndex `
             -replace '\{Port\}',            $Port `
             -replace '\{ProfilesFolder\}',  $cfg.ProfilesFolder `
             -replace '\{ProfileName\}',     $ProfileName

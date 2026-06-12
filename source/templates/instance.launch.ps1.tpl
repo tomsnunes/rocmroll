@@ -46,6 +46,13 @@ $env:PYTORCH_TUNABLEOP_CACHE_DIR = $TunableOpCacheFolder
 # ROCm/HIP infrastructure
 # ---------------------------------------------------------------------------
 $env:HIP_VISIBLE_DEVICES = '0'
+
+# rocm_sdk's offload-arch GPU discovery spawns an unquoted exe path and breaks
+# on space-containing install paths; pre-seed the target family detected at
+# install time. Profiles load later and can override this value.
+$RocmTargetFamily = '{RocmIndex}'
+if ($RocmTargetFamily) { $env:ROCM_SDK_TARGET_FAMILY = $RocmTargetFamily }
+
 $PathEntries = @(
     $EnvironmentFolder,
     (Join-Path $EnvironmentFolder 'Scripts'),

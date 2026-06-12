@@ -187,7 +187,7 @@ function Invoke-FullInstall {
 
         # Generate launchers
         Invoke-GenerateLaunchers -InstanceName $InstanceName -EnvironmentName $envName `
-            -GfxVersion $gpu.gfx -Port 8188 -Channel $Channel -ProfileName $ProfileName
+            -GfxVersion $gpu.gfx -RocmIndex $gpu.rocmIndex -Port 8188 -Channel $Channel -ProfileName $ProfileName
 
         # Bind the instance path into the environment's python312._pth so ComfyUI Desktop imports work
         Set-EnvironmentInstancePath -EnvironmentName $envName -InstanceName $InstanceName

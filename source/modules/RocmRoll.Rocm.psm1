@@ -324,7 +324,7 @@ function Invoke-InstallRocm {
         -UseWheelhouse:$useWheelhouse -WheelhouseFolder $wheelhouse
 
     if (-not $Force) {
-        $existingValidation = Invoke-ValidateRocm -EnvironmentName $EnvironmentName
+        $existingValidation = Invoke-ValidateRocm -EnvironmentName $EnvironmentName -RocmIndex $RocmIndex
         if ($existingValidation.passed) {
             $gpu = ConvertTo-StateHashtable -InputObject $(if ($existingState) { $existingState.gpu } else { $null })
             $pkgs = ConvertTo-StateHashtable -InputObject $(if ($existingState) { $existingState.packages } else { $null })
@@ -347,6 +347,9 @@ function Invoke-InstallRocm {
     $env:PIP_DISABLE_PIP_VERSION_CHECK = '1'
     $env:PIP_NO_INPUT                  = '1'
     $env:PIP_REQUIRE_VIRTUALENV        = 'false'
+    # Bypass rocm_sdk's offload-arch GPU discovery (spawns an unquoted exe path
+    # that breaks on space-containing install paths) for rocm-sdk init below.
+    if ($RocmIndex) { $env:ROCM_SDK_TARGET_FAMILY = $RocmIndex }
 
     if ($installPlan.sdkArgs.Count -gt 0) {
         Write-LogInfo "Installing ROCm SDK packages from AMD direct URLs" -Comp 'RocmRoll.Rocm' -Op 'InstallRocmSdk' -Inst $EnvironmentName
@@ -405,7 +408,7 @@ function Invoke-InstallRocm {
     }
 
     # --- Step 4: Validate ---
-    $validResult = Invoke-ValidateRocm -EnvironmentName $EnvironmentName
+    $validResult = Invoke-ValidateRocm -EnvironmentName $EnvironmentName -RocmIndex $RocmIndex
     if (-not $validResult.passed) {
         $torchOk = $validResult.PSObject.Properties['torchImportable'] -and [bool]$validResult.torchImportable
         if (-not $torchOk) {
@@ -425,9 +428,13 @@ function Invoke-InstallRocm {
 }
 
 function Invoke-ValidateRocm {
-    param([string]$EnvironmentName)
+    param(
+        [string]$EnvironmentName,
+        [string]$RocmIndex = ''
+    )
 
     Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Environment.psm1') -Force -Global
+    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.State.psm1')       -Force -Global
 
     $pythonExe = Get-EnvironmentPython -Name $EnvironmentName
 
@@ -435,8 +442,28 @@ function Invoke-ValidateRocm {
         return [pscustomobject]@{ passed = $false; torchImportable = $false; error = "Python not found: $pythonExe" }
     }
 
+    if (-not $RocmIndex) {
+        $envState = Get-EnvironmentState -Name $EnvironmentName
+        if ($envState -and $envState.PSObject.Properties['gpu'] -and $envState.gpu) {
+            $indexProperty = $envState.gpu.PSObject.Properties['rocmIndex']
+            if ($indexProperty -and $indexProperty.Value) { $RocmIndex = [string]$indexProperty.Value }
+        }
+    }
+
     $pyScript = @'
-import json, sys
+import json, os, sys
+
+# rocm_sdk's offload-arch GPU discovery spawns an unquoted exe path and breaks
+# on space-containing install paths; pre-seed the target family it would have
+# detected, but only if the installed distribution actually offers it.
+target_family = sys.argv[1] if len(sys.argv) > 1 else ""
+if target_family and not os.environ.get("ROCM_SDK_TARGET_FAMILY"):
+    try:
+        from rocm_sdk import _dist_info
+        if target_family in _dist_info.AVAILABLE_TARGET_FAMILIES:
+            os.environ["ROCM_SDK_TARGET_FAMILY"] = target_family
+    except Exception:
+        pass
 
 try:
     import torch
@@ -493,7 +520,7 @@ print(json.dumps({
         $prevEap = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
         try {
-            $combined = & $pythonExe $tmpPy 2>&1
+            $combined = & $pythonExe $tmpPy $RocmIndex 2>&1
         } finally {
             $ErrorActionPreference = $prevEap
         }

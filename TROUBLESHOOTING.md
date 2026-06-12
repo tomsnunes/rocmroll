@@ -17,6 +17,7 @@ When something goes wrong, always run diagnostics first:
 - [Git Not Found](#git-not-found)
 - [GPU Not Detected](#gpu-not-detected)
 - [ROCm Install Fails](#rocm-install-fails)
+- [GPU Not Visible When Install Path Contains Spaces](#gpu-not-visible-when-install-path-contains-spaces)
 - [Torch Import Fails After Install](#torch-import-fails-after-install)
 - [ComfyUI Fails to Start](#comfyui-fails-to-start)
 - [Known ComfyUI Database Error](#known-comfyui-database-error)
@@ -122,6 +123,30 @@ ERROR ROCMROLL-ROCM-003: pip install failed for torch.
 | `No matching distribution found` | Your GPU may require `--pre` for pre-release packages |
 | `Connection timeout` | Network issue or AMD server down — retry later |
 | Partial wheel download stuck | `.\rocmroll.bat cache clean --all` |
+
+---
+
+## GPU Not Visible When Install Path Contains Spaces
+
+**Symptom:** During install or launch from a root folder whose path contains a space (for example `D:\T2IAI\ComfyUI ROCmRoll\`), output like this appears and `torch.cuda.is_available()` is `False`:
+
+```text
+ComfyUI: Unknown command line argument 'ROCmRoll\environments\...\_rocm_sdk_core\lib\llvm\bin\offload-arch.exe'.
+Try: 'D:\T2IAI\ComfyUI --help'
+```
+
+**Cause:** An upstream bug in AMD's `rocm_sdk` package (TheRock). It detects the GPU target family by spawning `offload-arch.exe` with an unquoted path. Windows splits the unquoted command line at the first space, so a different executable runs (in the example above, the portable `D:\T2IAI\ComfyUI.exe`), GPU detection fails, and torch falls back to CPU.
+
+**Workaround (automatic):** ROCmRoll sets the `ROCM_SDK_TARGET_FAMILY` environment variable to the GPU family it detected itself (for example `gfx103X-dgpu`), both during install-time validation and in generated launchers. `rocm_sdk` honours this variable and skips the broken `offload-arch.exe` detection entirely.
+
+**If you see this on an existing instance,** regenerate the launcher to pick up the workaround:
+
+```powershell
+.\rocmroll.bat repair --instance rocm-stable --component launchers
+.\rocmroll.bat rocm validate --instance rocm-stable
+```
+
+**Alternative:** reinstall ROCmRoll into a path without spaces (recommended root: `C:\Platform\ai`).
 
 ---
 
