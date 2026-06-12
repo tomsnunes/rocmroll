@@ -116,6 +116,15 @@ function Invoke-InstallComfyDeps {
     $pipExitCode = Invoke-LoggedNativeCommand -FilePath $pythonExe -Arguments $pipArgs -Comp 'RocmRoll.ComfyUI' -Op 'InstallDeps' -Inst $InstanceName
     if ($pipExitCode -ne 0) { throw "ROCMROLL-COMFY-001: pip install requirements.txt failed (exit $pipExitCode)" }
     Write-LogSuccess "ComfyUI dependencies installed" -Comp 'RocmRoll.ComfyUI'
+
+    $managerRequirementsFile = Join-Path $instanceFolder 'manager_requirements.txt'
+    if (Test-Path $managerRequirementsFile) {
+        Write-LogInfo "Installing ComfyUI manager_requirements.txt" -Comp 'RocmRoll.ComfyUI' -Op 'InstallDeps' -Inst $InstanceName
+        $managerPipArgs = @('-m', 'pip', 'install', '--cache-dir', $cfg.PipCacheFolder, '--upgrade-strategy', 'only-if-needed', '-r', $managerRequirementsFile)
+        $managerPipExitCode = Invoke-LoggedNativeCommand -FilePath $pythonExe -Arguments $managerPipArgs -Comp 'RocmRoll.ComfyUI' -Op 'InstallDeps' -Inst $InstanceName
+        if ($managerPipExitCode -ne 0) { throw "ROCMROLL-COMFY-003: pip install manager_requirements.txt failed (exit $managerPipExitCode)" }
+        Write-LogSuccess "ComfyUI manager dependencies installed" -Comp 'RocmRoll.ComfyUI'
+    }
 }
 
 function Invoke-GenerateExtraModelPaths {
