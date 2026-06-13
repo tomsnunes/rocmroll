@@ -111,7 +111,7 @@ function Write-LogError   { param([string]$Msg,[string]$Comp='RocmRoll',[string]
 function Write-LogFatal   { param([string]$Msg,[string]$Comp='RocmRoll',[string]$Op='',[string]$Inst='',[hashtable]$Data=@{}) Write-Log -Level FATAL   -Message $Msg -Component $Comp -Operation $Op -Instance $Inst -Data $Data }
 
 # Lines from pip/git that are worth showing at INFO even without --verbose
-$script:ProgressPattern = '(?i)(downloading |installing collected|successfully installed|already satisfied|collecting |resolving |building wheel|cloning into|fetching |error:|warning:|failed |exception)'
+$script:ProgressPattern = '(?i)(downloading |installing collected|successfully installed|already satisfied|collecting |resolving |building wheel|cloning into|fetching |error:|warning:|failed |exception|incompatible)'
 
 function ConvertTo-NativeOutputLine {
     param([object]$Output)

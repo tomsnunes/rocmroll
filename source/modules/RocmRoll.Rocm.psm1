@@ -84,32 +84,6 @@ function Get-RocmProfileForChannel {
     return $rocmProfile
 }
 
-function Get-RocmArchitectureSourceOverride {
-    <#
-    .SYNOPSIS
-        Returns the per-family ROCm source override from rocm-architectures.json,
-        or $null. Used for families (e.g. RDNA 1/2) whose torch wheels are only
-        published on a different index than the channel default.
-    #>
-    param([string]$RocmIndex)
-
-    if (-not $RocmIndex) { return $null }
-
-    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force -Global
-
-    $cfg = Get-Config
-    $manifestPath = Join-Path $cfg.ManifestsFolder 'rocm-architectures.json'
-    if (-not (Test-Path $manifestPath)) { return $null }
-
-    $manifest = Get-Content $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    # Family key is the index name without the -all/-dgpu/-dcgpu suffix (gfx103X-dgpu -> gfx103X).
-    $familyKey = ($RocmIndex -split '-')[0]
-    $family = Get-RocmObjectValue -InputObject $manifest -PropertyName $familyKey
-    if (-not $family) { return $null }
-
-    return Get-RocmObjectValue -InputObject $family -PropertyName 'sourceOverride'
-}
-
 function New-RocmIndexProfile {
     param([switch]$AllowPreRelease)
 
@@ -193,6 +167,7 @@ function Resolve-RocmInstallPlan {
             sdkArgs            = $sdkArgs
             torchArgs          = $torchArgs
             rocmArgs           = @()
+            torchDeps          = @()
             allPackageSpecs    = @($sdkUrls + $torchUrls)
             rocmVersion        = [string](Get-RocmObjectValue -InputObject $RocmProfile -PropertyName 'version' -DefaultValue '')
             torchVersion       = [string](Get-RocmObjectValue -InputObject $RocmProfile -PropertyName 'torchVersion' -DefaultValue '')
@@ -208,18 +183,24 @@ function Resolve-RocmInstallPlan {
     $indexBase = [string](Get-RocmObjectValue -InputObject $RocmProfile -PropertyName 'indexBase' -DefaultValue $cfg.RocmIndexBase)
     $indexUrl = "$($indexBase.TrimEnd('/'))/$RocmIndex/"
     $torchPackages = @(ConvertTo-RocmStringArray -Value (Get-RocmObjectValue -InputObject $RocmProfile -PropertyName 'torchPackages'))
-    $rocmPackages = @(ConvertTo-RocmStringArray -Value (Get-RocmObjectValue -InputObject $RocmProfile -PropertyName 'rocmPackages'))
+    $rocmPackages  = @(ConvertTo-RocmStringArray -Value (Get-RocmObjectValue -InputObject $RocmProfile -PropertyName 'rocmPackages'))
+    $torchDeps     = @(ConvertTo-RocmStringArray -Value (Get-RocmObjectValue -InputObject $RocmProfile -PropertyName 'torchDependencies' -DefaultValue @()))
     if ($torchPackages.Count -eq 0) { $torchPackages = @('torch', 'torchvision', 'torchaudio') }
     if ($rocmPackages.Count -eq 0) { $rocmPackages = @('rocm[libraries,devel]') }
 
     $profileAllowPreRelease = [bool](Get-RocmObjectValue -InputObject $RocmProfile -PropertyName 'allowPreRelease' -DefaultValue $false)
     $effectiveAllowPreRelease = $profileAllowPreRelease -or [bool]$AllowPreRelease
 
+    # Nightly torch/torchvision/torchaudio are released as a matched date-tagged
+    # set. Their base version numbers intentionally differ (e.g. torch 2.13 +
+    # torchaudio 2.11), so torchaudio's torch<2.12 constraint causes pip to
+    # backtrack through hundreds of candidates when all three are resolved
+    # together. Installing with --no-deps bypasses that resolver loop.
     $torchArgs = @(
         '-m', 'pip', 'install',
+        '--no-deps',
         '--index-url', $indexUrl,
-        '--cache-dir', $cfg.PipCacheFolder,
-        '--upgrade-strategy', 'only-if-needed'
+        '--cache-dir', $cfg.PipCacheFolder
     )
     $rocmArgs = @(
         '-m', 'pip', 'install',
@@ -228,14 +209,14 @@ function Resolve-RocmInstallPlan {
     )
     if ($UseWheelhouse -and $WheelhouseFolder) {
         $torchArgs += @('--find-links', $WheelhouseFolder)
-        $rocmArgs += @('--find-links', $WheelhouseFolder)
+        $rocmArgs  += @('--find-links', $WheelhouseFolder)
     }
     if ($effectiveAllowPreRelease) {
         $torchArgs += '--pre'
-        $rocmArgs += '--pre'
+        $rocmArgs  += '--pre'
     }
     $torchArgs += $torchPackages
-    $rocmArgs += $rocmPackages
+    $rocmArgs  += $rocmPackages
 
     return [pscustomobject][ordered]@{
         source             = 'index'
@@ -245,6 +226,7 @@ function Resolve-RocmInstallPlan {
         sdkArgs            = @()
         torchArgs          = @($torchArgs)
         rocmArgs           = @($rocmArgs)
+        torchDeps          = @($torchDeps)
         allPackageSpecs    = @($torchPackages + $rocmPackages)
         rocmVersion        = [string](Get-RocmObjectValue -InputObject $RocmProfile -PropertyName 'version' -DefaultValue '')
         torchVersion       = [string](Get-RocmObjectValue -InputObject $RocmProfile -PropertyName 'torchVersion' -DefaultValue '')
@@ -324,20 +306,6 @@ function Invoke-InstallRocm {
 
     $cfg        = Get-Config
     $pythonExe  = Get-EnvironmentPython -Name $EnvironmentName
-
-    # Per-family source override: some families (RDNA 1/2) have torch wheels only
-    # on the staging nightly index, regardless of the requested channel.
-    $sourceOverride = Get-RocmArchitectureSourceOverride -RocmIndex $RocmIndex
-    if ($sourceOverride) {
-        $overrideIndex = [string](Get-RocmObjectValue -InputObject $sourceOverride -PropertyName 'index' -DefaultValue $RocmIndex)
-        $overrideBase  = [string](Get-RocmObjectValue -InputObject $sourceOverride -PropertyName 'indexBase' -DefaultValue '')
-        $overridePre   = [bool](Get-RocmObjectValue -InputObject $sourceOverride -PropertyName 'allowPreRelease' -DefaultValue $true)
-        $overrideReason = [string](Get-RocmObjectValue -InputObject $sourceOverride -PropertyName 'reason' -DefaultValue '')
-        Write-LogWarn "GPU family source override for '$RocmIndex': installing from index '$overrideIndex'$(if ($overrideBase) { " at $overrideBase" }). $overrideReason" -Comp 'RocmRoll.Rocm' -Op 'InstallRocm' -Inst $EnvironmentName
-        $RocmIndex = $overrideIndex
-        $RocmProfile = New-RocmIndexProfile -AllowPreRelease:$overridePre
-        if ($overrideBase) { $RocmProfile.indexBase = $overrideBase }
-    }
 
     $wheelhouse = if ($RocmIndex) { Join-Path $cfg.WheelhouseFolder $RocmIndex } else { '' }
     $useWheelhouse = $RocmIndex -and (Test-WheelhouseHasWheels -WheelhouseFolder $wheelhouse)
@@ -422,7 +390,31 @@ function Invoke-InstallRocm {
         $sourceDetail = if ($installPlan.indexUrl) { $installPlan.indexUrl } else { 'AMD direct URLs' }
         throw "ROCMROLL-ROCM-003: Failed to install torch from '$sourceDetail' (exit $torchExitCode)"
     }
-    Write-LogSuccess "torch installed" -Comp 'RocmRoll.Rocm'
+    Write-LogSuccess "torch installed (wheels)" -Comp 'RocmRoll.Rocm'
+
+    # --- Step 1b: torch Python-level dependencies (explicit list from channel manifest) ---
+    # --no-deps above bypasses pip's resolver to avoid backtracking caused by the AMD
+    # staging index shipping torchaudio metadata (torch<2.12) that predates the current
+    # torch build (2.13). The dependencies are declared explicitly in channels.json so
+    # they can be reviewed and version-pinned (e.g. mpmath==1.3.0 avoids the ROCm index
+    # serving only the incompatible 1.4.1). PyPI is used (no --index-url) because these
+    # are all standard Python packages not specific to the ROCm build.
+    if ($installPlan.source -eq 'index' -and $installPlan.torchDeps.Count -gt 0) {
+        Write-LogInfo "Installing torch package dependencies: $($installPlan.torchDeps -join ', ')" -Comp 'RocmRoll.Rocm' -Op 'InstallTorchDeps' -Inst $EnvironmentName
+        $depArgs = @(
+            '-m', 'pip', 'install',
+            '--cache-dir', $cfg.PipCacheFolder,
+            '--upgrade-strategy', 'only-if-needed'
+        )
+        $depArgs += $installPlan.torchDeps
+
+        $depExitCode = Invoke-LoggedNativeCommand -FilePath $pythonExe -Arguments $depArgs -Comp 'RocmRoll.Rocm' -Op 'InstallTorchDeps' -Inst $EnvironmentName
+        if ($depExitCode -ne 0) {
+            Write-LogWarn "torch dependency install returned exit $depExitCode" -Comp 'RocmRoll.Rocm'
+        } else {
+            Write-LogSuccess "torch dependencies installed" -Comp 'RocmRoll.Rocm'
+        }
+    }
 
     # --- Step 2: rocm[libraries,devel] ---
     if ($installPlan.rocmArgs.Count -gt 0) {
@@ -498,7 +490,10 @@ import json, os, sys
 # rocm_sdk's offload-arch GPU discovery spawns an unquoted exe path and breaks
 # on space-containing install paths; pre-seed the target family it would have
 # detected, but only if the installed distribution actually offers it.
-target_family = sys.argv[1] if len(sys.argv) > 1 else ""
+_raw_index = sys.argv[1] if len(sys.argv) > 1 else ""
+# RocmIndex includes a suffix (gfx103X-all, gfx101X-dgpu, gfx110X-all); strip it
+# to get the plain family name that AVAILABLE_TARGET_FAMILIES carries.
+target_family = _raw_index.split('-')[0] if _raw_index else ""
 if target_family and not os.environ.get("ROCM_SDK_TARGET_FAMILY"):
     try:
         from rocm_sdk import _dist_info

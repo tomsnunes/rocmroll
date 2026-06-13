@@ -141,12 +141,32 @@ Current nightly profile:
 - Python: `3.12.10`
 - ComfyUI ref: `master`
 - ROCm source: index URL
-- Index base: `https://rocm.nightlies.amd.com/v2`
-- Index pattern: `https://rocm.nightlies.amd.com/v2/<rocmIndex>/`
+- Index base: `https://rocm.nightlies.amd.com/v2-staging`
+- Index pattern: `https://rocm.nightlies.amd.com/v2-staging/<rocmIndex>/`
 - Packages: `torch`, `torchvision`, `torchaudio`, and `rocm[libraries,devel]`
 - Pre-release packages: enabled by the channel profile
 
 Nightly is expected to break sometimes because it follows upstream package movement.
+
+### rdna1 and rdna2
+
+RDNA 1 (`gfx101X`, RX 5000 series) and RDNA 2 (`gfx103X`, RX 6000 series) are not supported on AMD's official Windows stable release index. Their ROCm/PyTorch wheels are only available on AMD's staging nightly index, so a dedicated channel is used for each family.
+
+`rdna1` and `rdna2` are independent channels — not variants of stable. They pin ComfyUI at `v0.24.0` but source ROCm/PyTorch from AMD's staging nightly index, which means package availability can change over time.
+
+When `--channel stable` is selected and ROCmRoll detects an RDNA 1 or RDNA 2 GPU, it automatically routes to the correct channel and logs the switch:
+
+| GPU family | Auto-selected channel |
+| --- | --- |
+| `gfx101X` (RDNA 1) | `rdna1` |
+| `gfx103X` (RDNA 2) | `rdna2` |
+
+You can also select these channels explicitly:
+
+```powershell
+.\rocmroll.bat install --instance my-rdna1 --channel rdna1
+.\rocmroll.bat install --instance my-rdna2 --channel rdna2
+```
 
 ## Profiles
 
@@ -378,7 +398,7 @@ GPU architecture mapping lives in `source\manifests\rocm-architectures.json` and
 | `gfx94X` | `gfx94X-dcgpu` | MI300 / MI325 | MI300A, MI300X, MI325X | no |
 | `gfx950` | `gfx950-dcgpu` | MI350 / MI355 | MI350X, MI355X | yes |
 
-> **Note — RDNA 1/2 (`gfx101X`, `gfx103X`):** AMD's official Windows release wheels do not support these families, and torch wheels for them are only published on AMD's staging nightly index (`https://rocm.nightlies.amd.com/v2-staging/`). ROCmRoll therefore routes these families to the staging index automatically — on **both** channels, including `stable`. This is configured per family via the `sourceOverride` key in `source\manifests\rocm-architectures.json`.
+> **Note — RDNA 1/2 (`gfx101X`, `gfx103X`):** AMD's official Windows release wheels do not support these families, and torch wheels for them are only published on AMD's staging nightly index (`https://rocm.nightlies.amd.com/v2-staging/`). When `--channel stable` is used with an RDNA 1 or RDNA 2 GPU, ROCmRoll automatically switches to the `rdna1` or `rdna2` channel respectively. See [rdna1 and rdna2](#rdna1-and-rdna2) for details.
 
 Manual override example:
 
@@ -580,7 +600,7 @@ Global options:
 | Option | Meaning |
 | --- | --- |
 | `--instance NAME` | Target instance name |
-| `--channel stable\|nightly` | Update channel, default `stable` |
+| `--channel stable\|nightly\|rdna1\|rdna2` | Update channel, default `stable` (rdna1/rdna2 auto-selected for RDNA 1/2 GPUs) |
 | `--python VERSION` | Python version, default `3.12.10` |
 | `--port PORT` | ComfyUI launch port, default `8188` |
 | `--gfx ARCH` | Override GPU architecture family |

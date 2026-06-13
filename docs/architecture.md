@@ -401,11 +401,12 @@ Example `channels.json`:
     },
     "rocm": {
       "source": "index",
-      "indexBase": "https://rocm.nightlies.amd.com/v2",
+      "indexBase": "https://rocm.nightlies.amd.com/v2-staging",
       "allowPreRelease": true,
       "packageSet": "latest",
       "torchPackages": ["torch", "torchvision", "torchaudio"],
-      "rocmPackages": ["rocm[libraries,devel]"]
+      "rocmPackages": ["rocm[libraries,devel]"],
+      "torchDependencies": ["filelock", "fsspec", "jinja2", "mpmath==1.3.0", "networkx", "numpy", "pillow", "setuptools<82", "sympy", "typing-extensions"]
     },
     "packages": {
       "tritonWindows": "3.6.0.post25",
@@ -916,18 +917,18 @@ Stable uses AMD-recommended direct package URLs for ROCm 7.2.1 and Python 3.12:
 https://repo.radeon.com/rocm/windows/rocm-rel-7.2.1/
 ```
 
-Nightly uses the ROCm index URL pattern:
+Nightly (and the dedicated `rdna1`/`rdna2` channels) use the AMD staging nightly index URL pattern:
 
 ```text
-https://rocm.nightlies.amd.com/v2/<rocmIndex>/
+https://rocm.nightlies.amd.com/v2-staging/<rocmIndex>/
 ```
 
 Examples:
 
 ```text
-https://rocm.nightlies.amd.com/v2/gfx120X-all/
-https://rocm.nightlies.amd.com/v2/gfx110X-all/
-https://rocm.nightlies.amd.com/v2/gfx103X-dgpu/
+https://rocm.nightlies.amd.com/v2-staging/gfx120X-all/
+https://rocm.nightlies.amd.com/v2-staging/gfx110X-all/
+https://rocm.nightlies.amd.com/v2-staging/gfx103X-all/
 ```
 
 Stable install order:
