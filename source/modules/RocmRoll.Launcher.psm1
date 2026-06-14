@@ -92,6 +92,9 @@ function Invoke-GenerateLaunchers {
             -replace '\{Port\}',            $Port `
             -replace '\{ProfilesFolder\}',  $cfg.ProfilesFolder `
             -replace '\{ProfileName\}',     $ProfileName
+        if (-not (Test-Path $cfg.ProfilesFolder)) {
+            Write-LogWarning "ProfilesFolder '$($cfg.ProfilesFolder)' does not exist - launchers will fail to load profiles at runtime." -Comp 'RocmRoll.Launcher'
+        }
         Write-RocmRollTextFile -Path (Join-Path $launchersFolder "$InstanceName.ps1") -Content $ps1Content
     }
 
