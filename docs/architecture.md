@@ -36,7 +36,7 @@ The platform must:
 8. Share heavy data such as models across instances.
 9. Redirect or map input/output/temp directories to a common data folder.
 10. Install AMD ROCm/PyTorch packages from the correct TheRock/ROCm index based on detected GPU architecture.
-11. Support stable and nightly update channels.
+11. Support stable, nightly, and preview update channels.
 12. Provide clear CLI UX, structured logging, diagnostics, validation and repair workflows.
 13. Use spec-driven development, with features defined before implementation.
 14. Make installation idempotent: rerunning the same command should converge the instance to the desired state.
@@ -389,7 +389,7 @@ Example `channels.json`:
     }
   },
   "nightly": {
-    "description": "Latest ROCm/TheRock and latest ComfyUI master",
+    "description": "Latest ROCm/TheRock and latest ComfyUI master (v2-staging index)",
     "comfyui": {
       "source": "git",
       "repo": "https://github.com/Comfy-Org/ComfyUI.git",
@@ -405,8 +405,31 @@ Example `channels.json`:
       "allowPreRelease": true,
       "packageSet": "latest",
       "torchPackages": ["torch", "torchvision", "torchaudio"],
-      "rocmPackages": ["rocm[libraries,devel]"],
-      "torchDependencies": ["filelock", "fsspec", "jinja2", "mpmath==1.3.0", "networkx", "numpy", "pillow", "setuptools<82", "sympy", "typing-extensions"]
+      "rocmPackages": ["rocm[libraries,devel]"]
+    },
+    "packages": {
+      "tritonWindows": "3.6.0.post25",
+      "sageAttention": "1.0.6"
+    }
+  },
+  "preview": {
+    "description": "Promoted nightly builds from the v2 (non-staging) index and latest ComfyUI master",
+    "comfyui": {
+      "source": "git",
+      "repo": "https://github.com/Comfy-Org/ComfyUI.git",
+      "ref": "master",
+      "pinCommit": null
+    },
+    "python": {
+      "version": "3.12.10"
+    },
+    "rocm": {
+      "source": "index",
+      "indexBase": "https://rocm.nightlies.amd.com/v2",
+      "allowPreRelease": true,
+      "packageSet": "latest",
+      "torchPackages": ["torch", "torchvision", "torchaudio"],
+      "rocmPackages": ["rocm[libraries,devel]"]
     },
     "packages": {
       "tritonWindows": "3.6.0.post25",
@@ -917,10 +940,16 @@ Stable uses AMD-recommended direct package URLs for ROCm 7.2.1 and Python 3.12:
 https://repo.radeon.com/rocm/windows/rocm-rel-7.2.1/
 ```
 
-Nightly (and the dedicated `rdna1`/`rdna2` channels) use the AMD staging nightly index URL pattern:
+Nightly (and the dedicated `rdna2` channel) uses the AMD staging nightly index URL pattern:
 
 ```text
 https://rocm.nightlies.amd.com/v2-staging/<rocmIndex>/
+```
+
+Preview (and the dedicated `rdna1` channel) uses the promoted nightly index:
+
+```text
+https://rocm.nightlies.amd.com/v2/<rocmIndex>/
 ```
 
 Examples:
@@ -928,8 +957,26 @@ Examples:
 ```text
 https://rocm.nightlies.amd.com/v2-staging/gfx120X-all/
 https://rocm.nightlies.amd.com/v2-staging/gfx110X-all/
-https://rocm.nightlies.amd.com/v2-staging/gfx103X-all/
+https://rocm.nightlies.amd.com/v2/gfx103X-all/
+https://rocm.nightlies.amd.com/v2/gfx101X-all/
 ```
+
+### Pre-release flag control
+
+The `allowPreRelease` field in a channel's `rocm` block applies `--pre` to both torch and rocm pip calls. Two optional fields provide per-package control and take precedence over `allowPreRelease` when present:
+
+| Field | Default | Description |
+| --- | --- | --- |
+| `allowPreRelease` | `false` | Fallback: applies `--pre` to both torch and rocm when no per-package override is set |
+| `allowTorchPreRelease` | inherits `allowPreRelease` | Controls `--pre` for torch/torchvision/torchaudio only |
+| `allowRocmPreRelease` | inherits `allowPreRelease` | Controls `--pre` for rocm[libraries,devel] only |
+
+The `rdna1` and `rdna2` channels use these fields to mirror the reference install behaviour:
+
+| Channel | `allowTorchPreRelease` | `allowRocmPreRelease` |
+| --- | --- | --- |
+| `rdna1` | `false` | `false` |
+| `rdna2` | `true` | `false` |
 
 Stable install order:
 

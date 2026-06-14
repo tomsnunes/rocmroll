@@ -25,7 +25,7 @@ Implemented pieces include:
 - Python 3.12.10 runtime creation from embeddable Python plus full ZIP enrichment
 - Per-instance Python environments copied from the runtime
 - AMD GPU detection with JSON output and manual `--gfx` override
-- Stable and nightly ROCm/PyTorch channel manifests
+- Stable, nightly, and preview ROCm/PyTorch channel manifests
 - ComfyUI Git mirror cache and per-instance clone
 - Instance-local custom node install/update
 - Generated `extra_model_paths.yaml`
@@ -148,11 +148,38 @@ Current nightly profile:
 
 Nightly is expected to break sometimes because it follows upstream package movement.
 
-### rdna1 and rdna2
+### Preview
 
-RDNA 1 (`gfx101X`, RX 5000 series) and RDNA 2 (`gfx103X`, RX 6000 series) are not supported on AMD's official Windows stable release index. Their ROCm/PyTorch wheels are only available on AMD's staging nightly index, so a dedicated channel is used for each family.
+The `preview` channel uses the `v2` (non-staging) AMD nightly index instead of `v2-staging`.
 
-`rdna1` and `rdna2` are independent channels — not variants of stable. They pin ComfyUI at `v0.24.0` but source ROCm/PyTorch from AMD's staging nightly index, which means package availability can change over time.
+Current preview profile:
+
+- Python: `3.12.10`
+- ComfyUI ref: `master`
+- ROCm source: index URL
+- Index base: `https://rocm.nightlies.amd.com/v2`
+- Index pattern: `https://rocm.nightlies.amd.com/v2/<rocmIndex>/`
+- Packages: `torch`, `torchvision`, `torchaudio`, and `rocm[libraries,devel]`
+- Pre-release packages: enabled
+
+`v2` receives builds that have passed AMD's staging gate, making `preview` slightly more stable than `nightly` while still tracking pre-release packages.
+
+```powershell
+.\rocmroll.bat install --instance rocm-preview --channel preview
+```
+
+### RDNA1 and RDNA2
+
+RDNA 1 (`gfx101X`, RX 5000 series) and RDNA 2 (`gfx103X`, RX 6000 series) are not supported on AMD's official Windows stable release index. Their ROCm/PyTorch wheels are sourced from AMD's nightly indexes, so a dedicated channel is used for each family.
+
+`rdna1` and `rdna2` are independent channels — not variants of stable. They pin ComfyUI at `v0.24.0`.
+
+The `--pre` flag is applied selectively per channel, following the patientx-cfz reference install:
+
+| Channel | ROCm packages | PyTorch packages |
+| --- | --- | --- |
+| `rdna1` | no `--pre` | no `--pre` |
+| `rdna2` | no `--pre` | `--pre` (required for RDNA 2 torch wheels) |
 
 When `--channel stable` is selected and ROCmRoll detects an RDNA 1 or RDNA 2 GPU, it automatically routes to the correct channel and logs the switch:
 
@@ -180,10 +207,10 @@ Profiles live in `profiles\` at the root folder. The directory is configurable v
 | --- | --- | --- |
 | `stable` | `stable` | AMD baseline. Minimal env vars, no acceleration flags. Mirrors the official `run_amd_gpu.bat`. |
 | `stable-dynamic-vram` | — | Stable + `--enable-dynamic-vram`. For GPUs with limited VRAM. |
-| `optimized` | `nightly` | Full ROCm performance: Flash-Attention Triton, MIOpen, SageAttention, dynamic VRAM. |
+| `optimized` | `nightly`, `preview` | Full ROCm performance: Flash-Attention Triton, MIOpen, SageAttention, dynamic VRAM. |
 | `performance-autotune` | — | Like optimized but enables aggressive MIOpen and Triton kernel autotuning. First run is slow; subsequent runs use cached kernels. |
 
-When no `--profile` is specified, the launcher uses the default profile for the install channel (`stable` → `stable`, `nightly` → `optimized`).
+When no `--profile` is specified, the launcher uses the default profile for the install channel (`stable` → `stable`, `nightly` → `optimized`, `preview` → `optimized`).
 
 ### Profile Commands
 
@@ -332,7 +359,7 @@ Any ComfyUI startup flag can be placed in `launchArgs` and any environment varia
 | `--cache-lru N` | LRU cache with a maximum of N node results |
 | `--cache-none` | No caching — re-executes every node; lowest RAM/VRAM usage |
 
-#### Preview
+#### Preview Method
 
 | `launchArgs` entry | Description |
 | --- | --- |
@@ -600,7 +627,7 @@ Global options:
 | Option | Meaning |
 | --- | --- |
 | `--instance NAME` | Target instance name |
-| `--channel stable\|nightly\|rdna1\|rdna2` | Update channel, default `stable` (rdna1/rdna2 auto-selected for RDNA 1/2 GPUs) |
+| `--channel stable\|nightly\|preview\|rdna1\|rdna2` | Update channel, default `stable` (rdna1/rdna2 auto-selected for RDNA 1/2 GPUs) |
 | `--python VERSION` | Python version, default `3.12.10` |
 | `--port PORT` | ComfyUI launch port, default `8188` |
 | `--gfx ARCH` | Override GPU architecture family |
@@ -714,7 +741,8 @@ ROCmRoll deliberately avoids using or modifying the user-level Python installati
 ROCm/PyTorch installation is selected by channel:
 
 - `stable` installs AMD ROCm 7.2.1 direct URL wheels and tarball entries from the channel manifest.
-- `nightly` installs from `https://rocm.nightlies.amd.com/v2/<rocmIndex>/`.
+- `nightly` installs from `https://rocm.nightlies.amd.com/v2-staging/<rocmIndex>/` (cutting-edge staging builds).
+- `preview` installs from `https://rocm.nightlies.amd.com/v2/<rocmIndex>/` (promoted nightly builds; more stable than `nightly`).
 
 For index-based installs, if `.cache\wheelhouse\<rocmIndex>\` contains wheels, ROCmRoll adds it as a `--find-links` source.
 
@@ -817,7 +845,7 @@ The active profile's `launchArgs` are appended after the fixed arguments. For ex
 --enable-manager-legacy-ui
 ```
 
-The `optimized` profile (nightly channel default) additionally adds:
+The `optimized` profile (`nightly` and `preview` channel default) additionally adds:
 
 ```text
 --disable-smart-memory
