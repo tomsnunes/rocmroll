@@ -223,7 +223,7 @@ $script:CommandDefs = [ordered]@{
         Usage    = 'rocmroll install --instance NAME [options]'
         Params   = @(
             [ordered]@{ Flag = '--instance  NAME';           Required = $true;  Default = '';        Desc = 'Instance name to create' }
-            [ordered]@{ Flag = '--channel   stable|nightly|rdna1|rdna2'; Required = $false; Default = 'stable';  Desc = 'Update channel (rdna1/rdna2 are dedicated channels, auto-selected for RDNA 1/2 GPUs)' }
+            [ordered]@{ Flag = '--channel   stable|nightly|preview|rdna1|rdna2'; Required = $false; Default = 'stable';  Desc = 'Update channel (preview uses v2 nightly index; rdna1/rdna2 auto-selected for RDNA 1/2 GPUs)' }
             [ordered]@{ Flag = '--python    VERSION';        Required = $false; Default = '3.12.10'; Desc = 'Python version' }
             [ordered]@{ Flag = '--gfx       ARCH';           Required = $false; Default = '';        Desc = 'Override GPU architecture (e.g. gfx1201, gfx120X)' }
             [ordered]@{ Flag = '--profile   NAME';           Required = $false; Default = '';        Desc = 'Execution profile to bake into the launcher' }
@@ -256,7 +256,7 @@ $script:CommandDefs = [ordered]@{
         Usage    = 'rocmroll update --instance NAME [options]'
         Params   = @(
             [ordered]@{ Flag = '--instance  NAME';           Required = $true;  Default = '';       Desc = 'Instance to update' }
-            [ordered]@{ Flag = '--channel   stable|nightly|rdna1|rdna2'; Required = $false; Default = 'stable'; Desc = 'Switch update channel' }
+            [ordered]@{ Flag = '--channel   stable|nightly|preview|rdna1|rdna2'; Required = $false; Default = 'stable'; Desc = 'Switch update channel' }
             [ordered]@{ Flag = '--gfx       ARCH';           Required = $false; Default = '';       Desc = 'Override GPU architecture' }
         )
         Examples = @(
@@ -1003,7 +1003,7 @@ switch ($Command.ToLower()) {
             Write-Host ''
             $globalOpts = [ordered]@{
                 '--instance   NAME'       = 'Target instance name'
-                '--channel    VALUE'      = 'Update channel: stable | nightly | rdna1 | rdna2  (default: stable; rdna1/rdna2 are dedicated channels, auto-selected for RDNA 1/2 GPUs)'
+                '--channel    VALUE'      = 'Update channel: stable | nightly | preview | rdna1 | rdna2  (default: stable; preview uses v2 nightly index; rdna1/rdna2 auto-selected for RDNA 1/2 GPUs)'
                 '--python     VERSION'    = 'Python version                             (default: 3.12.10)'
                 '--port       PORT'       = 'ComfyUI listen port                        (default: 8188)'
                 '--gfx        ARCH'       = 'Override GPU architecture  e.g. gfx120X, gfx1201'

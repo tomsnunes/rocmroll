@@ -189,16 +189,16 @@ function Resolve-RocmInstallPlan {
     if ($rocmPackages.Count -eq 0) { $rocmPackages = @('rocm[libraries,devel]') }
 
     $profileAllowPreRelease = [bool](Get-RocmObjectValue -InputObject $RocmProfile -PropertyName 'allowPreRelease' -DefaultValue $false)
-    $effectiveAllowPreRelease = $profileAllowPreRelease -or [bool]$AllowPreRelease
 
-    # Nightly torch/torchvision/torchaudio are released as a matched date-tagged
-    # set. Their base version numbers intentionally differ (e.g. torch 2.13 +
-    # torchaudio 2.11), so torchaudio's torch<2.12 constraint causes pip to
-    # backtrack through hundreds of candidates when all three are resolved
-    # together. Installing with --no-deps bypasses that resolver loop.
+    # Per-package pre-release overrides; fall back to allowPreRelease when absent
+    $profileAllowTorchPreRelease = [bool](Get-RocmObjectValue -InputObject $RocmProfile -PropertyName 'allowTorchPreRelease' -DefaultValue $profileAllowPreRelease)
+    $profileAllowRocmPreRelease  = [bool](Get-RocmObjectValue -InputObject $RocmProfile -PropertyName 'allowRocmPreRelease'  -DefaultValue $profileAllowPreRelease)
+
+    $effectiveAllowTorchPreRelease = $profileAllowTorchPreRelease -or [bool]$AllowPreRelease
+    $effectiveAllowRocmPreRelease  = $profileAllowRocmPreRelease  -or [bool]$AllowPreRelease
+
     $torchArgs = @(
         '-m', 'pip', 'install',
-        '--no-deps',
         '--index-url', $indexUrl,
         '--cache-dir', $cfg.PipCacheFolder
     )
@@ -211,18 +211,18 @@ function Resolve-RocmInstallPlan {
         $torchArgs += @('--find-links', $WheelhouseFolder)
         $rocmArgs  += @('--find-links', $WheelhouseFolder)
     }
-    if ($effectiveAllowPreRelease) {
-        $torchArgs += '--pre'
-        $rocmArgs  += '--pre'
-    }
+    if ($effectiveAllowTorchPreRelease) { $torchArgs += '--pre' }
+    if ($effectiveAllowRocmPreRelease)  { $rocmArgs  += '--pre' }
     $torchArgs += $torchPackages
     $rocmArgs  += $rocmPackages
 
     return [pscustomobject][ordered]@{
-        source             = 'index'
-        rocmIndex          = $RocmIndex
-        indexUrl           = $indexUrl
-        allowPreRelease    = $effectiveAllowPreRelease
+        source               = 'index'
+        rocmIndex            = $RocmIndex
+        indexUrl             = $indexUrl
+        allowPreRelease      = $effectiveAllowTorchPreRelease -or $effectiveAllowRocmPreRelease
+        allowTorchPreRelease = $effectiveAllowTorchPreRelease
+        allowRocmPreRelease  = $effectiveAllowRocmPreRelease
         sdkArgs            = @()
         torchArgs          = @($torchArgs)
         rocmArgs           = @($rocmArgs)
@@ -283,8 +283,20 @@ function Set-RocmPackageStateValues {
     }
 
     $Packages['torch'] = $torchVersion
-    $Packages['torchvision'] = if ($InstallPlan.torchvisionVersion) { [string]$InstallPlan.torchvisionVersion } else { 'installed' }
-    $Packages['torchaudio'] = if ($InstallPlan.torchaudioVersion) { [string]$InstallPlan.torchaudioVersion } else { 'installed' }
+    $Packages['torchvision'] = if ($InstallPlan.torchvisionVersion) {
+        [string]$InstallPlan.torchvisionVersion
+    } elseif ($ValidationResult -and $ValidationResult.PSObject.Properties['torchvisionVersion'] -and $ValidationResult.torchvisionVersion) {
+        [string]$ValidationResult.torchvisionVersion
+    } else {
+        'installed'
+    }
+    $Packages['torchaudio'] = if ($InstallPlan.torchaudioVersion) {
+        [string]$InstallPlan.torchaudioVersion
+    } elseif ($ValidationResult -and $ValidationResult.PSObject.Properties['torchaudioVersion'] -and $ValidationResult.torchaudioVersion) {
+        [string]$ValidationResult.torchaudioVersion
+    } else {
+        'installed'
+    }
     $Packages['rocmLibraries'] = 'installed'
 }
 
@@ -391,30 +403,6 @@ function Invoke-InstallRocm {
         throw "ROCMROLL-ROCM-003: Failed to install torch from '$sourceDetail' (exit $torchExitCode)"
     }
     Write-LogSuccess "torch installed (wheels)" -Comp 'RocmRoll.Rocm'
-
-    # --- Step 1b: torch Python-level dependencies (explicit list from channel manifest) ---
-    # --no-deps above bypasses pip's resolver to avoid backtracking caused by the AMD
-    # staging index shipping torchaudio metadata (torch<2.12) that predates the current
-    # torch build (2.13). The dependencies are declared explicitly in channels.json so
-    # they can be reviewed and version-pinned (e.g. mpmath==1.3.0 avoids the ROCm index
-    # serving only the incompatible 1.4.1). PyPI is used (no --index-url) because these
-    # are all standard Python packages not specific to the ROCm build.
-    if ($installPlan.source -eq 'index' -and $installPlan.torchDeps.Count -gt 0) {
-        Write-LogInfo "Installing torch package dependencies: $($installPlan.torchDeps -join ', ')" -Comp 'RocmRoll.Rocm' -Op 'InstallTorchDeps' -Inst $EnvironmentName
-        $depArgs = @(
-            '-m', 'pip', 'install',
-            '--cache-dir', $cfg.PipCacheFolder,
-            '--upgrade-strategy', 'only-if-needed'
-        )
-        $depArgs += $installPlan.torchDeps
-
-        $depExitCode = Invoke-LoggedNativeCommand -FilePath $pythonExe -Arguments $depArgs -Comp 'RocmRoll.Rocm' -Op 'InstallTorchDeps' -Inst $EnvironmentName
-        if ($depExitCode -ne 0) {
-            Write-LogWarn "torch dependency install returned exit $depExitCode" -Comp 'RocmRoll.Rocm'
-        } else {
-            Write-LogSuccess "torch dependencies installed" -Comp 'RocmRoll.Rocm'
-        }
-    }
 
     # --- Step 2: rocm[libraries,devel] ---
     if ($installPlan.rocmArgs.Count -gt 0) {
@@ -540,10 +528,22 @@ passed_all = (
     all(r.get("passed", True) for r in checks)
 )
 
+def _pkg_ver(name):
+    try:
+        import importlib.metadata
+        return importlib.metadata.version(name)
+    except Exception:
+        return None
+
+tv_ver = _pkg_ver("torchvision")
+ta_ver = _pkg_ver("torchaudio")
+
 print(json.dumps({
     "passed": passed_all,
     "torchImportable": True,
     "torchVersion": torch.__version__,
+    "torchvisionVersion": tv_ver,
+    "torchaudioVersion": ta_ver,
     "hipVersion": getattr(torch.version, "hip", None),
     "cudaAvailable": torch.cuda.is_available(),
     "deviceCount": torch.cuda.device_count() if torch.cuda.is_available() else 0,
