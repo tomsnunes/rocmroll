@@ -23,6 +23,12 @@
       "repo": "https://github.com/kijai/ComfyUI-HFRemoteVae",
       "ref": "main",
       "installRequirements": true
+    },
+    {
+      "name": "ComfyUI-INT8-Fast-ROCM",
+      "repo": "https://github.com/patientx/ComfyUI-INT8-Fast-ROCM",
+      "ref": "main",
+      "installRequirements": true
     }
   ]
 }
