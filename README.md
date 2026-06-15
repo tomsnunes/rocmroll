@@ -590,6 +590,114 @@ All sub-paths (pip cache, state files, log subfolders, etc.) continue to be deri
 
 When no `rocmroll.ini` exists, all paths default to subdirectories of the root folder.
 
+## Workspaces
+
+A **workspace** is a named set of path overrides stored as a JSON file in `workspaces\`. Workspaces let you maintain separate root directories for different purposes (production vs. staging, C: drive vs. D: drive) and switch between them with a single command — no more manually commenting and uncommenting blocks in `rocmroll.ini`.
+
+### Path resolution precedence
+
+1. `--workspace NAME` on the command line — transient, highest (see below)
+2. Active workspace paths (from `[active]` section in `rocmroll.ini`)
+3. `[paths]` section in `rocmroll.ini`
+4. Built-in defaults (lowest)
+
+This means `[paths]` entries remain useful for base settings shared across all workspaces (e.g. `cache = D:\.cache` or `profiles = profiles`). A workspace only needs to declare the keys that differ.
+
+### Using --workspace with any command
+
+Append `--workspace NAME` to any command to use that workspace's paths for a single invocation without changing the persistent active workspace in `rocmroll.ini`.
+
+```powershell
+# Install into the staging paths without permanently switching workspaces
+.\rocmroll.bat install --instance rocm-stable --workspace staging
+
+# Run doctor against the production paths
+.\rocmroll.bat doctor --instance rocm-stable --workspace production
+
+# List instances in the staging workspace
+.\rocmroll.bat list --workspace staging
+
+# Launch using staging paths
+.\rocmroll.bat launch --instance rocm-stable --workspace staging
+```
+
+When `--workspace NAME` is supplied the specified workspace file must exist in `workspaces\`. The transient override does not write to `rocmroll.ini`, so the previously-active workspace remains unchanged for the next command.
+
+When no workspace is active and none has been created, all commands use the paths from `rocmroll.ini [paths]` (or built-in defaults) — this is the implicit **default** context, shown as `(default) [active]` in `rocmroll workspace list`.
+
+### Quick start
+
+```powershell
+# Create a workspace for your D: drive setup (interactive wizard)
+.\rocmroll.bat workspace create --workspace production
+
+# Switch to it
+.\rocmroll.bat workspace use --workspace production
+
+# Verify resolved paths
+.\rocmroll.bat config show
+
+# Switch back
+.\rocmroll.bat workspace use --workspace staging
+```
+
+### Migrating an existing rocmroll.ini
+
+If you currently have multiple path blocks commented in and out of `rocmroll.ini`, you can migrate to workspaces in three steps:
+
+```powershell
+# 1. Save the currently active [paths] block as a named workspace
+.\rocmroll.bat workspace init --workspace staging
+
+# 2. Clear those paths from [paths] (or leave them as a fallback base)
+#    Then create the second workspace with the wizard
+.\rocmroll.bat workspace create --workspace production
+
+# 3. Switch between them going forward
+.\rocmroll.bat workspace use --workspace production
+.\rocmroll.bat workspace use --workspace staging
+```
+
+### Workspace commands
+
+| Command | Description |
+| --- | --- |
+| `workspace list` | List all workspaces; marks the active one |
+| `workspace show --workspace NAME` | Print the paths stored in a workspace |
+| `workspace create --workspace NAME` | Interactive wizard to create a workspace |
+| `workspace use --workspace NAME` | Switch the active workspace |
+| `workspace edit --workspace NAME` | Re-run the wizard on an existing workspace |
+| `workspace remove --workspace NAME` | Delete a workspace (adds `--force` to skip prompt) |
+| `workspace init --workspace NAME` | Save current resolved paths as a new workspace |
+
+`workspace use` without `--workspace` shows an interactive selector when multiple workspaces exist.
+
+### Workspace JSON format
+
+Workspaces are stored in `workspaces\<name>.json`:
+
+```json
+{
+  "name": "staging",
+  "description": "D: drive staging environment",
+  "createdAt": "2026-06-14T00:00:00.0000000-03:00",
+  "paths": {
+    "shared":       "D:\\platform\\ai\\comfyui\\shared",
+    "instances":    "D:\\platform\\ai\\comfyui\\instances",
+    "environments": "D:\\platform\\ai\\comfyui\\environments",
+    "runtimes":     "D:\\platform\\ai\\comfyui\\runtimes",
+    "launchers":    "D:\\platform\\ai\\comfyui\\launchers",
+    "logs":         "D:\\platform\\ai\\comfyui\\logs",
+    "state":        "D:\\platform\\ai\\.state",
+    "cache":        "D:\\.cache"
+  }
+}
+```
+
+Only keys that differ from defaults need to be specified. Supported path keys mirror the `[paths]` section: `shared`, `userdata`, `instances`, `environments`, `runtimes`, `launchers`, `profiles`, `logs`, `state`, `cache`.
+
+The `workspaces\` directory is always relative to the ROCmRoll root folder and is never redirectable. Source files and the `workspaces\` registry must remain at a fixed location so ROCmRoll can always find them.
+
 ## Command Reference
 
 Get help:
@@ -636,6 +744,7 @@ Global options:
 | Option | Meaning |
 | --- | --- |
 | `--instance NAME` | Target instance name |
+| `--workspace NAME` | Transient workspace override — uses that workspace's paths for this command only, without changing the active workspace |
 | `--channel stable\|nightly\|preview\|rdna1\|rdna2` | Update channel, default `stable`; `rdna1`/`rdna2` are experimental and very unstable (auto-selected for RDNA 1/2 GPUs when stable is requested) |
 | `--python VERSION` | Python version, default `3.12.10` |
 | `--port PORT` | ComfyUI launch port, default `8188` |

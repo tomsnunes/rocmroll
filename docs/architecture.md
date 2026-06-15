@@ -297,7 +297,100 @@ rocmroll config init   # create rocmroll.ini with all keys commented out
 rocmroll config show   # display resolved paths and whether a config file is active
 ```
 
-**Implementation:** `RocmRoll.Config.psm1` → `Read-IniFile`, `Resolve-IniPath`, `Initialize-Config`, `Initialize-DefaultConfigFile`.
+**Implementation:** `RocmRoll.Config.psm1` → `Read-IniFile`, `Resolve-IniPath`, `Initialize-Config` (accepts optional `WorkspaceName` parameter for transient CLI overrides), `Initialize-DefaultConfigFile`.
+
+## 7b. Workspaces
+
+A **workspace** is a named JSON file stored in `<RootFolder>\workspaces\` that holds a set of path overrides. When a workspace is active, its paths are merged on top of the `[paths]` section before the config object is built.
+
+### Workspace storage
+
+- Registry directory: `<RootFolder>\workspaces\` — always root-relative, never redirectable
+- One file per workspace: `workspaces\<name>.json`
+- Active pointer written to `rocmroll.ini` under `[active]`:
+
+```ini
+[active]
+workspace = staging
+```
+
+### Workspace JSON schema
+
+```json
+{
+  "name": "staging",
+  "description": "D: drive staging environment",
+  "createdAt": "2026-06-14T00:00:00.0000000-03:00",
+  "paths": {
+    "shared":       "D:\\platform\\ai\\comfyui\\shared",
+    "instances":    "D:\\platform\\ai\\comfyui\\instances",
+    "environments": "D:\\platform\\ai\\comfyui\\environments",
+    "runtimes":     "D:\\platform\\ai\\comfyui\\runtimes",
+    "launchers":    "D:\\platform\\ai\\comfyui\\launchers",
+    "logs":         "D:\\platform\\ai\\comfyui\\logs",
+    "state":        "D:\\platform\\ai\\.state",
+    "cache":        "D:\\.cache"
+  }
+}
+```
+
+Only keys that differ from defaults need to be present. All keys are identical to the `[paths]` INI keys.
+
+### Path resolution merge order (highest wins)
+
+1. `--workspace NAME` CLI flag — transient, applies to one command only, does not modify `rocmroll.ini`
+2. Active workspace `paths` block (from `[active]` section in `rocmroll.ini`)
+3. `[paths]` section in `rocmroll.ini`
+4. Built-in defaults in `Initialize-Config`
+
+When `--workspace NAME` is supplied on a non-`workspace` command (e.g. `install`, `launch`, `repair`), `Initialize-Config` receives the name via its `WorkspaceName` parameter and uses that workspace's JSON paths as the highest-priority override. The `[active]` section in `rocmroll.ini` is ignored for that invocation and is not modified.
+
+When no workspace is active and no `--workspace` flag is given, all paths come from tiers 3 and 4. This is the implicit **default** context shown as `(default) [active]` in `rocmroll workspace list`.
+
+Because `[paths]` is the shared base tier, entries there apply to all workspaces that do not override the same key. For example, `cache = D:\.cache` in `[paths]` applies to every workspace that omits a `cache` key.
+
+**`shared` → `userdata` dependency:** if a workspace overrides `shared` but not `userdata`, `userdata` is re-derived as `<new_shared>\user` (or the `[paths]` `userdata` value if set). If the workspace overrides `userdata` explicitly, that value wins regardless.
+
+### `Set-ActiveWorkspace` — INI modification algorithm
+
+1. Read all lines from `rocmroll.ini` (create the file if it does not exist)
+2. Strip the existing `[active]` section and its key lines: iterate lines; when `^\[active\]` is seen, set a skip flag; clear the flag when the next `^\[` line is encountered; drop lines while the flag is set
+3. Remove trailing blank lines
+4. Append a fresh `[active]` block: `[active]` + `workspace = <name>`
+5. Write back UTF-8 without BOM using `[System.IO.File]::WriteAllText`
+
+Clearing the active workspace (on `workspace remove` of the active workspace) runs steps 1–5 without the append.
+
+### `RocmRoll.Workspace.psm1` function table
+
+| Function | Description |
+| --- | --- |
+| `Get-WorkspaceList` | Returns all workspace JSON files; marks which is active; shows `(default)` when none is active |
+| `Get-WorkspaceObject` | Loads and parses a single workspace JSON |
+| `Show-WorkspaceDetail` | Formatted console output of one workspace's paths |
+| `New-WorkspaceInteractive` | Wizard: prompts for name, description, and each path key |
+| `Set-ActiveWorkspace` | Writes `workspace = <name>` into the `[active]` INI section (persistent) |
+| `Clear-ActiveWorkspace` | Removes the `[active]` section from `rocmroll.ini` |
+| `Remove-Workspace` | Deletes the JSON; warns and prompts if currently active |
+| `Export-CurrentAsWorkspace` | Snapshots the resolved config paths into a new workspace JSON |
+
+### Workspace CLI commands
+
+```powershell
+rocmroll workspace list                    # list all; marks active
+rocmroll workspace show   --workspace NAME # print stored paths
+rocmroll workspace create --workspace NAME # interactive wizard
+rocmroll workspace use    --workspace NAME # switch active workspace
+rocmroll workspace edit   --workspace NAME # re-run wizard on existing
+rocmroll workspace remove --workspace NAME [--force]
+rocmroll workspace init   --workspace NAME # snapshot current paths
+```
+
+`workspace use` without `--workspace` shows an interactive selector when multiple workspaces exist.
+
+### Backward compatibility
+
+Zero breaking changes. If no `[active]` section and no `workspaces\` folder exist, `Initialize-Config` behaviour is identical to the previous version. The `workspaces\` folder is created by `Initialize-FolderStructure` (`rocmroll init`) but does not need to contain any files for the system to function.
 
 ## 8. CLI commands
 
