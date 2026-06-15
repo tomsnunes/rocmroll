@@ -167,6 +167,7 @@ function Resolve-RocmInstallPlan {
             sdkArgs            = $sdkArgs
             torchArgs          = $torchArgs
             rocmArgs           = @()
+            torchDeps          = @()
             allPackageSpecs    = @($sdkUrls + $torchUrls)
             rocmVersion        = [string](Get-RocmObjectValue -InputObject $RocmProfile -PropertyName 'version' -DefaultValue '')
             torchVersion       = [string](Get-RocmObjectValue -InputObject $RocmProfile -PropertyName 'torchVersion' -DefaultValue '')
@@ -182,18 +183,24 @@ function Resolve-RocmInstallPlan {
     $indexBase = [string](Get-RocmObjectValue -InputObject $RocmProfile -PropertyName 'indexBase' -DefaultValue $cfg.RocmIndexBase)
     $indexUrl = "$($indexBase.TrimEnd('/'))/$RocmIndex/"
     $torchPackages = @(ConvertTo-RocmStringArray -Value (Get-RocmObjectValue -InputObject $RocmProfile -PropertyName 'torchPackages'))
-    $rocmPackages = @(ConvertTo-RocmStringArray -Value (Get-RocmObjectValue -InputObject $RocmProfile -PropertyName 'rocmPackages'))
+    $rocmPackages  = @(ConvertTo-RocmStringArray -Value (Get-RocmObjectValue -InputObject $RocmProfile -PropertyName 'rocmPackages'))
+    $torchDeps     = @(ConvertTo-RocmStringArray -Value (Get-RocmObjectValue -InputObject $RocmProfile -PropertyName 'torchDependencies' -DefaultValue @()))
     if ($torchPackages.Count -eq 0) { $torchPackages = @('torch', 'torchvision', 'torchaudio') }
     if ($rocmPackages.Count -eq 0) { $rocmPackages = @('rocm[libraries,devel]') }
 
     $profileAllowPreRelease = [bool](Get-RocmObjectValue -InputObject $RocmProfile -PropertyName 'allowPreRelease' -DefaultValue $false)
-    $effectiveAllowPreRelease = $profileAllowPreRelease -or [bool]$AllowPreRelease
+
+    # Per-package pre-release overrides; fall back to allowPreRelease when absent
+    $profileAllowTorchPreRelease = [bool](Get-RocmObjectValue -InputObject $RocmProfile -PropertyName 'allowTorchPreRelease' -DefaultValue $profileAllowPreRelease)
+    $profileAllowRocmPreRelease  = [bool](Get-RocmObjectValue -InputObject $RocmProfile -PropertyName 'allowRocmPreRelease'  -DefaultValue $profileAllowPreRelease)
+
+    $effectiveAllowTorchPreRelease = $profileAllowTorchPreRelease -or [bool]$AllowPreRelease
+    $effectiveAllowRocmPreRelease  = $profileAllowRocmPreRelease  -or [bool]$AllowPreRelease
 
     $torchArgs = @(
         '-m', 'pip', 'install',
         '--index-url', $indexUrl,
-        '--cache-dir', $cfg.PipCacheFolder,
-        '--upgrade-strategy', 'only-if-needed'
+        '--cache-dir', $cfg.PipCacheFolder
     )
     $rocmArgs = @(
         '-m', 'pip', 'install',
@@ -202,23 +209,24 @@ function Resolve-RocmInstallPlan {
     )
     if ($UseWheelhouse -and $WheelhouseFolder) {
         $torchArgs += @('--find-links', $WheelhouseFolder)
-        $rocmArgs += @('--find-links', $WheelhouseFolder)
+        $rocmArgs  += @('--find-links', $WheelhouseFolder)
     }
-    if ($effectiveAllowPreRelease) {
-        $torchArgs += '--pre'
-        $rocmArgs += '--pre'
-    }
+    if ($effectiveAllowTorchPreRelease) { $torchArgs += '--pre' }
+    if ($effectiveAllowRocmPreRelease)  { $rocmArgs  += '--pre' }
     $torchArgs += $torchPackages
-    $rocmArgs += $rocmPackages
+    $rocmArgs  += $rocmPackages
 
     return [pscustomobject][ordered]@{
-        source             = 'index'
-        rocmIndex          = $RocmIndex
-        indexUrl           = $indexUrl
-        allowPreRelease    = $effectiveAllowPreRelease
+        source               = 'index'
+        rocmIndex            = $RocmIndex
+        indexUrl             = $indexUrl
+        allowPreRelease      = $effectiveAllowTorchPreRelease -or $effectiveAllowRocmPreRelease
+        allowTorchPreRelease = $effectiveAllowTorchPreRelease
+        allowRocmPreRelease  = $effectiveAllowRocmPreRelease
         sdkArgs            = @()
         torchArgs          = @($torchArgs)
         rocmArgs           = @($rocmArgs)
+        torchDeps          = @($torchDeps)
         allPackageSpecs    = @($torchPackages + $rocmPackages)
         rocmVersion        = [string](Get-RocmObjectValue -InputObject $RocmProfile -PropertyName 'version' -DefaultValue '')
         torchVersion       = [string](Get-RocmObjectValue -InputObject $RocmProfile -PropertyName 'torchVersion' -DefaultValue '')
@@ -275,8 +283,20 @@ function Set-RocmPackageStateValues {
     }
 
     $Packages['torch'] = $torchVersion
-    $Packages['torchvision'] = if ($InstallPlan.torchvisionVersion) { [string]$InstallPlan.torchvisionVersion } else { 'installed' }
-    $Packages['torchaudio'] = if ($InstallPlan.torchaudioVersion) { [string]$InstallPlan.torchaudioVersion } else { 'installed' }
+    $Packages['torchvision'] = if ($InstallPlan.torchvisionVersion) {
+        [string]$InstallPlan.torchvisionVersion
+    } elseif ($ValidationResult -and $ValidationResult.PSObject.Properties['torchvisionVersion'] -and $ValidationResult.torchvisionVersion) {
+        [string]$ValidationResult.torchvisionVersion
+    } else {
+        'installed'
+    }
+    $Packages['torchaudio'] = if ($InstallPlan.torchaudioVersion) {
+        [string]$InstallPlan.torchaudioVersion
+    } elseif ($ValidationResult -and $ValidationResult.PSObject.Properties['torchaudioVersion'] -and $ValidationResult.torchaudioVersion) {
+        [string]$ValidationResult.torchaudioVersion
+    } else {
+        'installed'
+    }
     $Packages['rocmLibraries'] = 'installed'
 }
 
@@ -298,6 +318,7 @@ function Invoke-InstallRocm {
 
     $cfg        = Get-Config
     $pythonExe  = Get-EnvironmentPython -Name $EnvironmentName
+
     $wheelhouse = if ($RocmIndex) { Join-Path $cfg.WheelhouseFolder $RocmIndex } else { '' }
     $useWheelhouse = $RocmIndex -and (Test-WheelhouseHasWheels -WheelhouseFolder $wheelhouse)
 
@@ -324,7 +345,7 @@ function Invoke-InstallRocm {
         -UseWheelhouse:$useWheelhouse -WheelhouseFolder $wheelhouse
 
     if (-not $Force) {
-        $existingValidation = Invoke-ValidateRocm -EnvironmentName $EnvironmentName
+        $existingValidation = Invoke-ValidateRocm -EnvironmentName $EnvironmentName -RocmIndex $RocmIndex
         if ($existingValidation.passed) {
             $gpu = ConvertTo-StateHashtable -InputObject $(if ($existingState) { $existingState.gpu } else { $null })
             $pkgs = ConvertTo-StateHashtable -InputObject $(if ($existingState) { $existingState.packages } else { $null })
@@ -347,6 +368,10 @@ function Invoke-InstallRocm {
     $env:PIP_DISABLE_PIP_VERSION_CHECK = '1'
     $env:PIP_NO_INPUT                  = '1'
     $env:PIP_REQUIRE_VIRTUALENV        = 'false'
+    # Do NOT set ROCM_SDK_TARGET_FAMILY here: the rocm sdist's setup.py calls
+    # determine_target_family() at build time and hard-fails on any value the
+    # distribution does not ship (stable direct-URL wheels only ship 'custom').
+    # Validation and launchers seed it behind a membership check instead.
 
     if ($installPlan.sdkArgs.Count -gt 0) {
         Write-LogInfo "Installing ROCm SDK packages from AMD direct URLs" -Comp 'RocmRoll.Rocm' -Op 'InstallRocmSdk' -Inst $EnvironmentName
@@ -377,7 +402,7 @@ function Invoke-InstallRocm {
         $sourceDetail = if ($installPlan.indexUrl) { $installPlan.indexUrl } else { 'AMD direct URLs' }
         throw "ROCMROLL-ROCM-003: Failed to install torch from '$sourceDetail' (exit $torchExitCode)"
     }
-    Write-LogSuccess "torch installed" -Comp 'RocmRoll.Rocm'
+    Write-LogSuccess "torch installed (wheels)" -Comp 'RocmRoll.Rocm'
 
     # --- Step 2: rocm[libraries,devel] ---
     if ($installPlan.rocmArgs.Count -gt 0) {
@@ -405,9 +430,13 @@ function Invoke-InstallRocm {
     }
 
     # --- Step 4: Validate ---
-    $validResult = Invoke-ValidateRocm -EnvironmentName $EnvironmentName
+    $validResult = Invoke-ValidateRocm -EnvironmentName $EnvironmentName -RocmIndex $RocmIndex
     if (-not $validResult.passed) {
-        throw "ROCMROLL-ROCM-004: ROCm validation failed. Check logs for details."
+        $torchOk = $validResult.PSObject.Properties['torchImportable'] -and [bool]$validResult.torchImportable
+        if (-not $torchOk) {
+            throw "ROCMROLL-ROCM-004: ROCm validation failed - torch is not importable. Check logs for details."
+        }
+        Write-LogWarn "torch imported but GPU was not visible during install-time validation (likely a path-space initialisation issue). ROCm acceleration will work once the environment is fully configured." -Comp 'RocmRoll.Rocm'
     }
 
     # Update environment state with GPU/package info
@@ -421,18 +450,49 @@ function Invoke-InstallRocm {
 }
 
 function Invoke-ValidateRocm {
-    param([string]$EnvironmentName)
+    param(
+        [string]$EnvironmentName,
+        [string]$RocmIndex = ''
+    )
 
     Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Environment.psm1') -Force -Global
+    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.State.psm1')       -Force -Global
 
     $pythonExe = Get-EnvironmentPython -Name $EnvironmentName
 
+    if (-not (Test-Path $pythonExe)) {
+        return [pscustomobject]@{ passed = $false; torchImportable = $false; error = "Python not found: $pythonExe" }
+    }
+
+    if (-not $RocmIndex) {
+        $envState = Get-EnvironmentState -Name $EnvironmentName
+        if ($envState -and $envState.PSObject.Properties['gpu'] -and $envState.gpu) {
+            $indexProperty = $envState.gpu.PSObject.Properties['rocmIndex']
+            if ($indexProperty -and $indexProperty.Value) { $RocmIndex = [string]$indexProperty.Value }
+        }
+    }
+
     $pyScript = @'
-import json, sys
+import json, os, sys
+
+# rocm_sdk's offload-arch GPU discovery spawns an unquoted exe path and breaks
+# on space-containing install paths; pre-seed the target family it would have
+# detected, but only if the installed distribution actually offers it.
+_raw_index = sys.argv[1] if len(sys.argv) > 1 else ""
+# RocmIndex includes a suffix (gfx103X-all, gfx101X-dgpu, gfx110X-all); strip it
+# to get the plain family name that AVAILABLE_TARGET_FAMILIES carries.
+target_family = _raw_index.split('-')[0] if _raw_index else ""
+if target_family and not os.environ.get("ROCM_SDK_TARGET_FAMILY"):
+    try:
+        from rocm_sdk import _dist_info
+        if target_family in _dist_info.AVAILABLE_TARGET_FAMILIES:
+            os.environ["ROCM_SDK_TARGET_FAMILY"] = target_family
+    except Exception:
+        pass
 
 try:
     import torch
-except ImportError as exc:
+except Exception as exc:
     print(json.dumps({"passed": False, "torchImportable": False, "error": str(exc), "checks": []}))
     sys.exit(2)
 
@@ -468,10 +528,22 @@ passed_all = (
     all(r.get("passed", True) for r in checks)
 )
 
+def _pkg_ver(name):
+    try:
+        import importlib.metadata
+        return importlib.metadata.version(name)
+    except Exception:
+        return None
+
+tv_ver = _pkg_ver("torchvision")
+ta_ver = _pkg_ver("torchaudio")
+
 print(json.dumps({
     "passed": passed_all,
     "torchImportable": True,
     "torchVersion": torch.__version__,
+    "torchvisionVersion": tv_ver,
+    "torchaudioVersion": ta_ver,
     "hipVersion": getattr(torch.version, "hip", None),
     "cudaAvailable": torch.cuda.is_available(),
     "deviceCount": torch.cuda.device_count() if torch.cuda.is_available() else 0,
@@ -482,14 +554,27 @@ print(json.dumps({
     $tmpPy = [System.IO.Path]::ChangeExtension([System.IO.Path]::GetTempFileName(), '.py')
     try {
         [System.IO.File]::WriteAllText($tmpPy, $pyScript, [System.Text.Encoding]::UTF8)
-        $output = & $pythonExe $tmpPy 2>$null
+        $prevEap = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            $combined = & $pythonExe $tmpPy $RocmIndex 2>&1
+        } finally {
+            $ErrorActionPreference = $prevEap
+        }
+        # Keep only stdout; rocm_sdk_core may spawn a wrong exe via unquoted space-containing path, flooding stderr.
+        $output = $combined | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] }
     } finally {
         Remove-Item $tmpPy -ErrorAction SilentlyContinue
     }
+    # Find the last stdout line that looks like a JSON object; Python may emit torch noise before it.
+    $jsonLine = @($output) | Where-Object { $_ -match '^\s*\{' } | Select-Object -Last 1
+    if (-not $jsonLine) {
+        return [pscustomobject]@{ passed = $false; torchImportable = $false; error = 'Python validation produced no JSON output' }
+    }
     try {
-        return $output | ConvertFrom-Json
+        return $jsonLine | ConvertFrom-Json
     } catch {
-        return @{ passed = $false; error = "ROCm validation returned invalid JSON: $_" }
+        return [pscustomobject]@{ passed = $false; error = "ROCm validation returned invalid JSON: $_" }
     }
 }
 

@@ -46,6 +46,30 @@ $env:PYTORCH_TUNABLEOP_CACHE_DIR = $TunableOpCacheFolder
 # ROCm/HIP infrastructure
 # ---------------------------------------------------------------------------
 $env:HIP_VISIBLE_DEVICES = '0'
+
+# rocm_sdk's offload-arch GPU discovery spawns an unquoted exe path and breaks
+# on space-containing install paths; pre-seed the target family detected at
+# install time, but only when this distribution actually ships it (stable
+# direct-URL wheels ship a single 'custom' family and self-resolve, and an
+# unavailable value makes rocm_sdk raise ValueError on torch import).
+# Profiles load later and can override this value.
+$RocmTargetFamily = '{RocmIndex}'
+if ($RocmTargetFamily -and -not $env:ROCM_SDK_TARGET_FAMILY) {
+    $PrevEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $FamiliesJson = & $PythonExe -c 'import json; from rocm_sdk import _dist_info; print(json.dumps(list(_dist_info.AVAILABLE_TARGET_FAMILIES)))' 2>$null
+        # [string[]] cast: PS 5.1's ConvertFrom-Json returns JSON arrays as a single
+        # array object, which @() would wrap instead of enumerate.
+        $Families = [string[]](($FamiliesJson | Out-String).Trim() | ConvertFrom-Json)
+        if ($Families -contains $RocmTargetFamily) {
+            $env:ROCM_SDK_TARGET_FAMILY = $RocmTargetFamily
+        }
+    } catch { } finally {
+        $ErrorActionPreference = $PrevEap
+    }
+}
+
 $PathEntries = @(
     $EnvironmentFolder,
     (Join-Path $EnvironmentFolder 'Scripts'),

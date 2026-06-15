@@ -26,7 +26,14 @@ function Invoke-RepairComponent {
 
     Write-LogInfo "Repairing instance '$InstanceName' component: $Component" -Comp 'RocmRoll.Repair' -Inst $InstanceName
 
-    $repairRuntime = { 
+    # Capture GPU state now, before $repairEnv can wipe it.
+    # Invoke-CreateEnvironment -Force calls Set-EnvironmentState with no Gpu parameter
+    # (defaults to @{}), overwriting the stored rocmIndex. The scriptblocks below
+    # close over $preRepairGpu so $repairRocm can fall back to it.
+    $preRepairEnvState = Get-EnvironmentState -Name $state.environment
+    $preRepairGpu = ConvertTo-StateHashtable -InputObject $(if ($preRepairEnvState) { $preRepairEnvState.gpu } else { $null })
+
+    $repairRuntime = {
         Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Runtime.psm1') -Force
         Invoke-CreatePythonRuntime -Version $state.environment -Force | Out-Null
     }
@@ -39,13 +46,35 @@ function Invoke-RepairComponent {
     }
 
     $repairRocm = {
-        Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Rocm.psm1') -Force
+        Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Rocm.psm1')     -Force
+        Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Hardware.psm1') -Force
         $envState = Get-EnvironmentState -Name $state.environment
         $channelProperty = $state.PSObject.Properties['channel']
         $channel = if ($channelProperty -and $channelProperty.Value) { [string]$channelProperty.Value } else { 'stable' }
         $rocmProfile = Get-RocmProfileForChannel -Channel $channel
         $runtimeVersion = if ($envState -and $envState.runtimeVersion) { [string]$envState.runtimeVersion } else { '' }
-        Invoke-InstallRocm -EnvironmentName $state.environment -RocmIndex $envState.gpu.rocmIndex `
+
+        # Resolve rocmIndex in priority order:
+        # 1. Live env state (may be empty if $repairEnv wiped it via Set-EnvironmentState with no Gpu param)
+        # 2. Pre-repair snapshot captured before $repairEnv ran
+        # 3. Live GPU detection via CIM/PnP (same path as a fresh install)
+        $rocmIndex = ''
+        if ($envState -and $envState.gpu) {
+            $prop = $envState.gpu.PSObject.Properties['rocmIndex']
+            if ($prop -and $prop.Value) { $rocmIndex = [string]$prop.Value }
+        }
+        if (-not $rocmIndex -and $preRepairGpu.ContainsKey('rocmIndex') -and $preRepairGpu['rocmIndex']) {
+            $rocmIndex = [string]$preRepairGpu['rocmIndex']
+        }
+        if (-not $rocmIndex) {
+            Write-LogInfo "rocmIndex not in state; running GPU detection" -Comp 'RocmRoll.Repair' -Inst $InstanceName
+            $detectedGpu = Invoke-GpuDetect -Quiet
+            if ($detectedGpu.detected -and $detectedGpu.rocmIndex) {
+                $rocmIndex = [string]$detectedGpu.rocmIndex
+            }
+        }
+
+        Invoke-InstallRocm -EnvironmentName $state.environment -RocmIndex $rocmIndex `
             -RocmProfile $rocmProfile -Channel $channel -PythonVersion $runtimeVersion -Force | Out-Null
     }
 

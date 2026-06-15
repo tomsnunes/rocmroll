@@ -141,6 +141,17 @@ function Invoke-FullInstall {
         Write-StepOk "GPU: $($gpu.name) / $($gpu.gfx) / $($gpu.architecture)"
         Write-StepInfo "ROCm index: $($gpu.rocmIndex)"
 
+        # RDNA 1/2 are not supported on the AMD stable release index.
+        # Automatically switch to the dedicated per-architecture channel so the
+        # correct index-based source profile is used for the rest of the install.
+        if ($Channel -eq 'stable' -and $gpu.gfx -in @('gfx101X', 'gfx103X')) {
+            $legacyChannel = if ($gpu.gfx -eq 'gfx101X') { 'rdna1' } else { 'rdna2' }
+            Write-StepWarn "GPU family $($gpu.gfx) is not supported on the AMD stable release index."
+            Write-StepInfo "Automatically selecting channel '$legacyChannel' (AMD staging nightly ROCm wheels)."
+            $Channel    = $legacyChannel
+            $channelCfg = $channelManifest.$Channel
+        }
+
         # Update environment state with GPU info
         $envState = Get-EnvironmentState -Name $envName
         Set-EnvironmentState -Name $envName -Path $envState.path -RuntimeVersion $PythonVersion `
@@ -187,7 +198,7 @@ function Invoke-FullInstall {
 
         # Generate launchers
         Invoke-GenerateLaunchers -InstanceName $InstanceName -EnvironmentName $envName `
-            -GfxVersion $gpu.gfx -Port 8188 -Channel $Channel -ProfileName $ProfileName
+            -GfxVersion $gpu.gfx -RocmIndex $gpu.rocmIndex -Port 8188 -Channel $Channel -ProfileName $ProfileName
 
         # Bind the instance path into the environment's python312._pth so ComfyUI Desktop imports work
         Set-EnvironmentInstancePath -EnvironmentName $envName -InstanceName $InstanceName

@@ -25,7 +25,7 @@ Implemented pieces include:
 - Python 3.12.10 runtime creation from embeddable Python plus full ZIP enrichment
 - Per-instance Python environments copied from the runtime
 - AMD GPU detection with JSON output and manual `--gfx` override
-- Stable and nightly ROCm/PyTorch channel manifests
+- Stable, nightly, and preview ROCm/PyTorch channel manifests
 - ComfyUI Git mirror cache and per-instance clone
 - Instance-local custom node install/update
 - Generated `extra_model_paths.yaml`
@@ -141,12 +141,67 @@ Current nightly profile:
 - Python: `3.12.10`
 - ComfyUI ref: `master`
 - ROCm source: index URL
-- Index base: `https://rocm.nightlies.amd.com/v2`
-- Index pattern: `https://rocm.nightlies.amd.com/v2/<rocmIndex>/`
+- Index base: `https://rocm.nightlies.amd.com/v2-staging`
+- Index pattern: `https://rocm.nightlies.amd.com/v2-staging/<rocmIndex>/`
 - Packages: `torch`, `torchvision`, `torchaudio`, and `rocm[libraries,devel]`
 - Pre-release packages: enabled by the channel profile
 
 Nightly is expected to break sometimes because it follows upstream package movement.
+
+### Preview
+
+The `preview` channel uses the `v2` (non-staging) AMD nightly index instead of `v2-staging`.
+
+Current preview profile:
+
+- Python: `3.12.10`
+- ComfyUI ref: `master`
+- ROCm source: index URL
+- Index base: `https://rocm.nightlies.amd.com/v2`
+- Index pattern: `https://rocm.nightlies.amd.com/v2/<rocmIndex>/`
+- Packages: `torch`, `torchvision`, `torchaudio`, and `rocm[libraries,devel]`
+- Pre-release packages: enabled
+
+`v2` receives builds that have passed AMD's staging gate, making `preview` slightly more stable than `nightly` while still tracking pre-release packages.
+
+```powershell
+.\rocmroll.bat install --instance rocm-preview --channel preview
+```
+
+### RDNA1 and RDNA2
+
+> **Warning — RDNA 1 (`gfx101X`) and RDNA 2 (`gfx103X`) are experimental and very unstable.**
+> AMD has no official Windows ROCm support for these GPU families. Their ROCm and PyTorch wheels
+> exist only on AMD's nightly staging indexes, are subject to removal or silent breakage without
+> notice, and are not covered by AMD's Windows ROCm support policy. Expect frequent install
+> failures, torch import errors, and generation quality regressions whenever upstream nightly
+> packages change. Use these channels only if you have one of these GPUs and accept the
+> instability trade-off.
+
+RDNA 1 (`gfx101X`, RX 5000 series) and RDNA 2 (`gfx103X`, RX 6000 series) are not supported on AMD's official Windows stable release index. Their ROCm/PyTorch wheels are sourced from AMD's nightly indexes, so a dedicated channel is used for each family.
+
+`rdna1` and `rdna2` are independent channels — not variants of stable. They pin ComfyUI at `v0.24.0`.
+
+The `--pre` flag is applied selectively per channel, following the patientx-cfz reference install:
+
+| Channel | ROCm packages | PyTorch packages |
+| --- | --- | --- |
+| `rdna1` | no `--pre` | no `--pre` |
+| `rdna2` | no `--pre` | `--pre` (required for RDNA 2 torch wheels) |
+
+When `--channel stable` is selected and ROCmRoll detects an RDNA 1 or RDNA 2 GPU, it automatically routes to the correct channel and logs the switch:
+
+| GPU family | Auto-selected channel |
+| --- | --- |
+| `gfx101X` (RDNA 1) | `rdna1` |
+| `gfx103X` (RDNA 2) | `rdna2` |
+
+You can also select these channels explicitly:
+
+```powershell
+.\rocmroll.bat install --instance my-rdna1 --channel rdna1
+.\rocmroll.bat install --instance my-rdna2 --channel rdna2
+```
 
 ## Profiles
 
@@ -160,10 +215,11 @@ Profiles live in `profiles\` at the root folder. The directory is configurable v
 | --- | --- | --- |
 | `stable` | `stable` | AMD baseline. Minimal env vars, no acceleration flags. Mirrors the official `run_amd_gpu.bat`. |
 | `stable-dynamic-vram` | — | Stable + `--enable-dynamic-vram`. For GPUs with limited VRAM. |
-| `optimized` | `nightly` | Full ROCm performance: Flash-Attention Triton, MIOpen, SageAttention, dynamic VRAM. |
+| `optimized` | `nightly`, `preview` | Full ROCm performance: Flash-Attention Triton, MIOpen, SageAttention, dynamic VRAM. |
 | `performance-autotune` | — | Like optimized but enables aggressive MIOpen and Triton kernel autotuning. First run is slow; subsequent runs use cached kernels. |
+| `experimental` | — | Placeholder for custom patches and unverified wheels. Not applied by default. |
 
-When no `--profile` is specified, the launcher uses the default profile for the install channel (`stable` → `stable`, `nightly` → `optimized`).
+When no `--profile` is specified, the launcher uses the default profile for the install channel (`stable` → `stable`, `nightly` → `optimized`, `preview` → `optimized`).
 
 ### Profile Commands
 
@@ -312,7 +368,7 @@ Any ComfyUI startup flag can be placed in `launchArgs` and any environment varia
 | `--cache-lru N` | LRU cache with a maximum of N node results |
 | `--cache-none` | No caching — re-executes every node; lowest RAM/VRAM usage |
 
-#### Preview
+#### Preview Method
 
 | `launchArgs` entry | Description |
 | --- | --- |
@@ -364,19 +420,21 @@ Multiple fast options can be combined: `"--fast", "fp16_accumulation,autotune"`.
 Currently supported GPU architectures span RDNA 1–4, RDNA 3.5 (Strix Point / Strix Halo / Krackan Point integrated GPUs), Radeon Pro VII (Vega/GCN5), and AMD Instinct MI300/MI325/MI350/MI355 series (CDNA).
 GPU architecture mapping lives in `source\manifests\rocm-architectures.json` and is used by `RocmRoll.Hardware`.
 
-| GFX family | ROCm index | Architecture | Example devices | Pre-release required |
-| --- | --- | --- | --- | --- |
-| `gfx120X` | `gfx120X-all` | RDNA 4 | RX 9060, RX 9070, RX 9070 XT | yes |
-| `gfx1150` | `gfx1150` | RDNA 3.5 / Strix Point | Radeon 890M | yes |
-| `gfx1151` | `gfx1151` | RDNA 3.5 / Strix Halo | Radeon 8060S, 8050S, 8040S, 880M | yes |
-| `gfx1152` | `gfx1152` | RDNA 3.5 / Krackan Point | Radeon 860M, 840M, 820M | yes |
-| `gfx1153` | `gfx1153` | RDNA 3.5 | — | yes |
-| `gfx110X` | `gfx110X-all` | RDNA 3 | RX 7900, RX 7800, RX 7700, RX 7600, W7900, W7800, W7700, Radeon 780M, 760M, 740M | yes |
-| `gfx103X` | `gfx103X-dgpu` | RDNA 2 (dGPU) | RX 6950, RX 6900, RX 6800, RX 6700, RX 6600, RX 6500, W6800, V620 | no |
-| `gfx101X` | `gfx101X-dgpu` | RDNA 1 | RX 5700, RX 5600, RX 5500, Radeon Pro V520 | no |
-| `gfx90X` | `gfx90X-dcgpu` | Radeon Pro VII | Radeon Pro VII | no |
-| `gfx94X` | `gfx94X-dcgpu` | MI300 / MI325 | MI300A, MI300X, MI325X | no |
-| `gfx950` | `gfx950-dcgpu` | MI350 / MI355 | MI350X, MI355X | yes |
+| GFX family | ROCm index | Architecture | Example devices | Pre-release required | Status |
+| --- | --- | --- | --- | --- | --- |
+| `gfx120X` | `gfx120X-all` | RDNA 4 | RX 9060, RX 9070, RX 9070 XT | yes | Supported |
+| `gfx1150` | `gfx1150` | RDNA 3.5 / Strix Point | Radeon 890M | yes | Supported |
+| `gfx1151` | `gfx1151` | RDNA 3.5 / Strix Halo | Radeon 8060S, 8050S, 8040S, 880M | yes | Supported |
+| `gfx1152` | `gfx1152` | RDNA 3.5 / Krackan Point | Radeon 860M, 840M, 820M | yes | Supported |
+| `gfx1153` | `gfx1153` | RDNA 3.5 | — | yes | Supported |
+| `gfx110X` | `gfx110X-all` | RDNA 3 | RX 7900, RX 7800, RX 7700, RX 7600, W7900, W7800, W7700, Radeon 780M, 760M, 740M | yes | Supported |
+| `gfx103X` | `gfx103X-all` | RDNA 2 (dGPU) | RX 6950, RX 6900, RX 6800, RX 6700, RX 6600, RX 6500, W6800, V620 | yes | **Experimental** |
+| `gfx101X` | `gfx101X-dgpu` | RDNA 1 | RX 5700, RX 5600, RX 5500, Radeon Pro V520 | yes | **Experimental** |
+| `gfx90X` | `gfx90X-dcgpu` | Radeon Pro VII | Radeon Pro VII | no | Supported |
+| `gfx94X` | `gfx94X-dcgpu` | MI300 / MI325 | MI300A, MI300X, MI325X | no | Supported |
+| `gfx950` | `gfx950-dcgpu` | MI350 / MI355 | MI350X, MI355X | yes | Supported |
+
+> **Warning — RDNA 1/2 (`gfx101X`, `gfx103X`) are experimental and very unstable.** AMD has no official Windows ROCm support for these families. Their wheels exist only on AMD's nightly staging index and can disappear or break without notice. When `--channel stable` is used with one of these GPUs, ROCmRoll automatically switches to the `rdna1` or `rdna2` channel. See [RDNA1 and RDNA2](#rdna1-and-rdna2) for details.
 
 Manual override example:
 
@@ -578,7 +636,7 @@ Global options:
 | Option | Meaning |
 | --- | --- |
 | `--instance NAME` | Target instance name |
-| `--channel stable\|nightly` | Update channel, default `stable` |
+| `--channel stable\|nightly\|preview\|rdna1\|rdna2` | Update channel, default `stable`; `rdna1`/`rdna2` are experimental and very unstable (auto-selected for RDNA 1/2 GPUs when stable is requested) |
 | `--python VERSION` | Python version, default `3.12.10` |
 | `--port PORT` | ComfyUI launch port, default `8188` |
 | `--gfx ARCH` | Override GPU architecture family |
@@ -692,7 +750,8 @@ ROCmRoll deliberately avoids using or modifying the user-level Python installati
 ROCm/PyTorch installation is selected by channel:
 
 - `stable` installs AMD ROCm 7.2.1 direct URL wheels and tarball entries from the channel manifest.
-- `nightly` installs from `https://rocm.nightlies.amd.com/v2/<rocmIndex>/`.
+- `nightly` installs from `https://rocm.nightlies.amd.com/v2-staging/<rocmIndex>/` (cutting-edge staging builds).
+- `preview` installs from `https://rocm.nightlies.amd.com/v2/<rocmIndex>/` (promoted nightly builds; more stable than `nightly`).
 
 For index-based installs, if `.cache\wheelhouse\<rocmIndex>\` contains wheels, ROCmRoll adds it as a `--find-links` source.
 
@@ -728,6 +787,7 @@ Default custom nodes are defined in `source\manifests\custom-nodes.json`:
 - `CFZ-SwitchMenu`
 - `CFZ-Caching`
 - `ComfyUI-HFRemoteVae`
+- `ComfyUI-INT8-Fast-ROCM`
 
 ROCmRoll clones missing nodes, optionally updates existing nodes with `--update`, installs each node's `requirements.txt` when requested by the manifest, and logs failures as warnings where possible.
 
@@ -795,7 +855,7 @@ The active profile's `launchArgs` are appended after the fixed arguments. For ex
 --enable-manager-legacy-ui
 ```
 
-The `optimized` profile (nightly channel default) additionally adds:
+The `optimized` profile (`nightly` and `preview` channel default) additionally adds:
 
 ```text
 --disable-smart-memory

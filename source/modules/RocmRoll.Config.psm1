@@ -7,9 +7,9 @@
     Reads an optional rocmroll.ini from the root folder so users can redirect
     top-level directories (userdata, instances, environments, runtimes, launchers,
     profiles, shared, logs, state, cache) to arbitrary locations.
-    All I/O paths — InputFolder, OutputFolder, TempDataFolder, UserDataFolder —
+    All I/O paths - InputFolder, OutputFolder, TempDataFolder, UserDataFolder -
     are derived from SharedFolder. All sub-paths are computed from their (possibly
-    overridden) parent — callers never need to change.
+    overridden) parent - callers never need to change.
 #>
 
 Set-StrictMode -Version Latest
@@ -84,7 +84,7 @@ function Initialize-Config {
     $p       = if ($ini.ContainsKey('paths')) { $ini['paths'] } else { @{} }
 
     # Resolve user-configurable top-level paths
-    # shared is resolved first — all I/O paths derive from it
+    # shared is resolved first - all I/O paths derive from it
     $sharedFolder       = Resolve-IniPath $p['shared']       (Join-Path $RootFolder 'shared')        $RootFolder
     $userdataFolder     = Resolve-IniPath $p['userdata']     (Join-Path $sharedFolder 'user')        $RootFolder
     $instancesFolder    = Resolve-IniPath $p['instances']    (Join-Path $RootFolder 'instances')     $RootFolder
