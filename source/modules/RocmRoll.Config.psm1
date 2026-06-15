@@ -71,7 +71,8 @@ function Resolve-IniPath {
 
 function Initialize-Config {
     param(
-        [string]$RootFolder = ''
+        [string]$RootFolder    = '',
+        [string]$WorkspaceName = ''
     )
 
     if (-not $RootFolder) {
@@ -95,6 +96,55 @@ function Initialize-Config {
     $logsFolder         = Resolve-IniPath $p['logs']         (Join-Path $RootFolder 'logs')          $RootFolder
     $stateFolder        = Resolve-IniPath $p['state']        (Join-Path $RootFolder '.state')        $RootFolder
     $cacheFolder        = Resolve-IniPath $p['cache']        (Join-Path $RootFolder '.cache')        $RootFolder
+
+    # Apply active workspace path overrides (highest precedence, layered on top of [paths]).
+    # $WorkspaceName parameter takes priority over the [active] section in rocmroll.ini —
+    # this enables transient per-command overrides without modifying the persistent config.
+    $workspacesFolder    = Join-Path $RootFolder 'workspaces'
+    $activeWorkspaceName = ''
+    if ($WorkspaceName) {
+        $activeWorkspaceName = $WorkspaceName
+    } elseif ($ini.ContainsKey('active') -and $ini['active'].ContainsKey('workspace')) {
+        $activeWorkspaceName = $ini['active']['workspace']
+    }
+    if ($activeWorkspaceName) {
+        $wsFilePath = Join-Path $workspacesFolder "$activeWorkspaceName.json"
+        if (Test-Path $wsFilePath) {
+            try {
+                $wsData = Get-Content $wsFilePath -Raw -Encoding UTF8 | ConvertFrom-Json
+                if ($wsData.paths) {
+                    $wp = $wsData.paths
+                    # shared first: userdata default derives from it
+                    $wsProp = $wp.PSObject.Properties['shared']
+                    if ($wsProp -and $wsProp.Value) {
+                        $sharedFolder = Resolve-IniPath $wsProp.Value $sharedFolder $RootFolder
+                        $wsUdProp = $wp.PSObject.Properties['userdata']
+                        if (-not ($wsUdProp -and $wsUdProp.Value)) {
+                            $userdataFolder = Resolve-IniPath $p['userdata'] (Join-Path $sharedFolder 'user') $RootFolder
+                        }
+                    }
+                    $wsProp = $wp.PSObject.Properties['userdata']
+                    if ($wsProp -and $wsProp.Value) { $userdataFolder     = Resolve-IniPath $wsProp.Value $userdataFolder     $RootFolder }
+                    $wsProp = $wp.PSObject.Properties['instances']
+                    if ($wsProp -and $wsProp.Value) { $instancesFolder    = Resolve-IniPath $wsProp.Value $instancesFolder    $RootFolder }
+                    $wsProp = $wp.PSObject.Properties['environments']
+                    if ($wsProp -and $wsProp.Value) { $environmentsFolder = Resolve-IniPath $wsProp.Value $environmentsFolder $RootFolder }
+                    $wsProp = $wp.PSObject.Properties['runtimes']
+                    if ($wsProp -and $wsProp.Value) { $runtimesFolder     = Resolve-IniPath $wsProp.Value $runtimesFolder     $RootFolder }
+                    $wsProp = $wp.PSObject.Properties['launchers']
+                    if ($wsProp -and $wsProp.Value) { $launchersFolder    = Resolve-IniPath $wsProp.Value $launchersFolder    $RootFolder }
+                    $wsProp = $wp.PSObject.Properties['profiles']
+                    if ($wsProp -and $wsProp.Value) { $profilesFolder     = Resolve-IniPath $wsProp.Value $profilesFolder     $RootFolder }
+                    $wsProp = $wp.PSObject.Properties['logs']
+                    if ($wsProp -and $wsProp.Value) { $logsFolder         = Resolve-IniPath $wsProp.Value $logsFolder         $RootFolder }
+                    $wsProp = $wp.PSObject.Properties['state']
+                    if ($wsProp -and $wsProp.Value) { $stateFolder        = Resolve-IniPath $wsProp.Value $stateFolder        $RootFolder }
+                    $wsProp = $wp.PSObject.Properties['cache']
+                    if ($wsProp -and $wsProp.Value) { $cacheFolder        = Resolve-IniPath $wsProp.Value $cacheFolder        $RootFolder }
+                }
+            } catch { }
+        }
+    }
 
     $script:Config = [ordered]@{
         RootFolder         = $RootFolder
@@ -151,6 +201,9 @@ function Initialize-Config {
         LogsCrashFolder    = Join-Path $logsFolder 'crash'
 
         BinFolder          = Join-Path $RootFolder 'bin'
+
+        WorkspacesFolder   = $workspacesFolder
+        ActiveWorkspace    = $activeWorkspaceName
 
         RocmIndexBase      = 'https://rocm.nightlies.amd.com/v2'
     }
@@ -241,6 +294,7 @@ function Initialize-FolderStructure {
         $cfg.LogsUpdateFolder
         $cfg.LogsDoctorFolder
         $cfg.LogsCrashFolder
+        $cfg.WorkspacesFolder
     )
     foreach ($f in $folders) {
         if (-not (Test-Path $f)) {
@@ -289,6 +343,12 @@ function Initialize-DefaultConfigFile {
         ''
         '; All shared asset sub-paths (input\, output\, temp\, user\, models\, workflows\)'
         '; are derived from the shared key above.'
+        ''
+        '; Workspace management'
+        '; Use ''rocmroll workspace create'' and ''rocmroll workspace use'' to manage workspaces.'
+        '; The [active] section below is written automatically by ''rocmroll workspace use''.'
+        '; [active]'
+        '; workspace = my-workspace'
     )
 
     $content  = $lines -join [Environment]::NewLine

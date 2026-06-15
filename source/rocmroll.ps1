@@ -41,7 +41,6 @@ $ModulesDir  = Join-Path $ScriptRoot 'modules'
 function Import-AllModules {
     $order = @(
         'RocmRoll.Logging',
-        'RocmRoll.Config',
         'RocmRoll.State',
         'RocmRoll.Locking',
         'RocmRoll.Download',
@@ -155,6 +154,7 @@ function Remove-FolderTree {
     }
 }
 
+$WorkspaceName  = Get-FlagValue -ArgList $RemainingArgs -Name 'workspace'
 $InstanceName   = Get-FlagValue -ArgList $RemainingArgs -Name 'instance'
 $Channel        = Get-FlagValue -ArgList $RemainingArgs -Name 'channel'
 $PythonVersion  = Get-FlagValue -ArgList $RemainingArgs -Name 'python'
@@ -186,9 +186,15 @@ if (-not $Channel)       { $Channel       = 'stable' }
 if (-not $PythonVersion) { $PythonVersion = '3.12.10' }
 if (-not $LogLevel)      { $LogLevel      = if ($FlagDebug) { 'DEBUG' } elseif ($FlagVerbose) { 'DEBUG' } else { 'INFO' } }
 
-# Init config first (minimal before module import)
+# Init config first (minimal before module import).
+# If --workspace was supplied on a non-workspace command, apply it as a transient override so
+# all path resolution for this invocation uses that workspace without touching rocmroll.ini.
 Import-Module (Join-Path $ModulesDir 'RocmRoll.Config.psm1') -Force -Global
-Initialize-Config -RootFolder $RootFolder | Out-Null
+$initCfgArgs = @{ RootFolder = $RootFolder }
+if ($WorkspaceName -and $Command.ToLower() -ne 'workspace') {
+    $initCfgArgs['WorkspaceName'] = $WorkspaceName
+}
+Initialize-Config @initCfgArgs | Out-Null
 
 Import-Module (Join-Path $ModulesDir 'RocmRoll.Logging.psm1') -Force -Global
 $logInitArgs = @{ Level=$LogLevel; NoColor=$FlagNoColor; Quiet=$FlagQuiet; JsonOnly=$FlagJson }
@@ -227,6 +233,7 @@ $script:CommandDefs = [ordered]@{
             [ordered]@{ Flag = '--python    VERSION';        Required = $false; Default = '3.12.10'; Desc = 'Python version' }
             [ordered]@{ Flag = '--gfx       ARCH';           Required = $false; Default = '';        Desc = 'Override GPU architecture (e.g. gfx1201, gfx120X)' }
             [ordered]@{ Flag = '--profile   NAME';           Required = $false; Default = '';        Desc = 'Execution profile to bake into the launcher' }
+            [ordered]@{ Flag = '--workspace NAME';           Required = $false; Default = '';        Desc = 'Transient workspace override for this command only' }
             [ordered]@{ Flag = '--force';                    Required = $false; Default = '';        Desc = 'Force reinstall even if already ready' }
             [ordered]@{ Flag = '--shared-workflows';         Required = $false; Default = '';        Desc = 'Symlink instance workflows to shared/workflows' }
         )
@@ -242,8 +249,9 @@ $script:CommandDefs = [ordered]@{
         Usage    = 'rocmroll launch [--instance NAME] [--port PORT]'
         Params   = @(
             [ordered]@{ Flag = '--instance  NAME'; Required = $false; Default = '';     Desc = 'Instance name (omit to select interactively)' }
-            [ordered]@{ Flag = '--port      PORT';   Required = $false; Default = '8188'; Desc = 'Listen port' }
-            [ordered]@{ Flag = '--profile   NAME';  Required = $false; Default = '';     Desc = 'Override execution profile at runtime' }
+            [ordered]@{ Flag = '--port      PORT'; Required = $false; Default = '8188'; Desc = 'Listen port' }
+            [ordered]@{ Flag = '--profile   NAME'; Required = $false; Default = '';     Desc = 'Override execution profile at runtime' }
+            [ordered]@{ Flag = '--workspace NAME'; Required = $false; Default = '';     Desc = 'Transient workspace override for this command only' }
         )
         Examples = @(
             'rocmroll launch'
@@ -258,6 +266,7 @@ $script:CommandDefs = [ordered]@{
             [ordered]@{ Flag = '--instance  NAME';           Required = $true;  Default = '';       Desc = 'Instance to update' }
             [ordered]@{ Flag = '--channel   stable|nightly|preview|rdna1|rdna2'; Required = $false; Default = 'stable'; Desc = 'Switch update channel' }
             [ordered]@{ Flag = '--gfx       ARCH';           Required = $false; Default = '';       Desc = 'Override GPU architecture' }
+            [ordered]@{ Flag = '--workspace NAME';           Required = $false; Default = '';       Desc = 'Transient workspace override for this command only' }
         )
         Examples = @(
             'rocmroll update --instance rocm-stable'
@@ -269,10 +278,11 @@ $script:CommandDefs = [ordered]@{
         Usage    = 'rocmroll doctor [--instance NAME] [options]'
         Params   = @(
             [ordered]@{ Flag = '--instance  NAME'; Required = $false; Default = ''; Desc = 'Scope checks to a specific instance' }
-            [ordered]@{ Flag = '--gpu';             Required = $false; Default = ''; Desc = 'GPU detection and ROCm checks only' }
-            [ordered]@{ Flag = '--cache';           Required = $false; Default = ''; Desc = 'Cache integrity checks only' }
-            [ordered]@{ Flag = '--system';          Required = $false; Default = ''; Desc = 'System-level checks only' }
-            [ordered]@{ Flag = '--json';            Required = $false; Default = ''; Desc = 'Output results as structured JSON' }
+            [ordered]@{ Flag = '--gpu';            Required = $false; Default = ''; Desc = 'GPU detection and ROCm checks only' }
+            [ordered]@{ Flag = '--cache';          Required = $false; Default = ''; Desc = 'Cache integrity checks only' }
+            [ordered]@{ Flag = '--system';         Required = $false; Default = ''; Desc = 'System-level checks only' }
+            [ordered]@{ Flag = '--json';           Required = $false; Default = ''; Desc = 'Output results as structured JSON' }
+            [ordered]@{ Flag = '--workspace NAME'; Required = $false; Default = ''; Desc = 'Transient workspace override for this command only' }
         )
         Examples = @(
             'rocmroll doctor'
@@ -288,6 +298,7 @@ $script:CommandDefs = [ordered]@{
             [ordered]@{ Flag = '--instance   NAME';  Required = $true;  Default = '';    Desc = 'Instance to repair' }
             [ordered]@{ Flag = '--component  SCOPE'; Required = $false; Default = 'all'; Desc = 'python-runtime | python-env | rocm | comfyui | custom-nodes | launchers | patches | all' }
             [ordered]@{ Flag = '--profile    NAME';  Required = $false; Default = '';    Desc = 'Profile to apply when repairing launchers' }
+            [ordered]@{ Flag = '--workspace  NAME';  Required = $false; Default = '';    Desc = 'Transient workspace override for this command only' }
             [ordered]@{ Flag = '--shared-workflows'; Required = $false; Default = '';    Desc = 'Re-create shared workflows symlink during comfyui/all repair' }
         )
         Examples = @(
@@ -300,15 +311,18 @@ $script:CommandDefs = [ordered]@{
     }
     'list' = @{
         Synopsis = 'List all installed ComfyUI instances'
-        Usage    = 'rocmroll list'
-        Params   = @()
-        Examples = @('rocmroll list')
+        Usage    = 'rocmroll list [--workspace NAME]'
+        Params   = @(
+            [ordered]@{ Flag = '--workspace NAME'; Required = $false; Default = ''; Desc = 'Transient workspace override for this command only' }
+        )
+        Examples = @('rocmroll list', 'rocmroll list --workspace staging')
     }
     'remove' = @{
         Synopsis = 'Remove an instance and its Python environment'
         Usage    = 'rocmroll remove --instance NAME [--force]'
         Params   = @(
             [ordered]@{ Flag = '--instance  NAME'; Required = $true;  Default = ''; Desc = 'Instance to remove' }
+            [ordered]@{ Flag = '--workspace NAME'; Required = $false; Default = ''; Desc = 'Transient workspace override for this command only' }
             [ordered]@{ Flag = '--force';          Required = $false; Default = ''; Desc = 'Skip the confirmation prompt' }
         )
         Examples = @(
@@ -412,6 +426,31 @@ $script:CommandDefs = [ordered]@{
         Examples = @(
             'rocmroll config show'
             'rocmroll config init'
+        )
+    }
+    'workspace' = @{
+        Synopsis = 'Manage named workspaces (separate path-sets for different disks or purposes)'
+        Usage    = 'rocmroll workspace <list|show|create|use|edit|remove|init> [options]'
+        Params   = @(
+            [ordered]@{ Flag = 'list';                          Required = $false; Default = ''; Desc = 'List all workspaces; marks the active one' }
+            [ordered]@{ Flag = 'show   --workspace NAME';       Required = $false; Default = ''; Desc = 'Print paths stored in a workspace' }
+            [ordered]@{ Flag = 'create --workspace NAME';       Required = $false; Default = ''; Desc = 'Interactive wizard to create a new workspace' }
+            [ordered]@{ Flag = 'use    --workspace NAME';       Required = $false; Default = ''; Desc = 'Switch the active workspace' }
+            [ordered]@{ Flag = 'edit   --workspace NAME';       Required = $false; Default = ''; Desc = 'Re-run the wizard on an existing workspace' }
+            [ordered]@{ Flag = 'remove --workspace NAME';       Required = $false; Default = ''; Desc = 'Delete a workspace (--force skips confirmation)' }
+            [ordered]@{ Flag = 'init   --workspace NAME';       Required = $false; Default = ''; Desc = 'Save current resolved paths as a new workspace' }
+            [ordered]@{ Flag = '--workspace NAME';              Required = $false; Default = ''; Desc = 'Workspace name' }
+            [ordered]@{ Flag = '--force';                       Required = $false; Default = ''; Desc = 'Skip the confirmation prompt (remove)' }
+        )
+        Examples = @(
+            'rocmroll workspace list'
+            'rocmroll workspace create --workspace staging'
+            'rocmroll workspace use    --workspace staging'
+            'rocmroll workspace show   --workspace staging'
+            'rocmroll workspace edit   --workspace staging'
+            'rocmroll workspace init   --workspace production'
+            'rocmroll workspace remove --workspace staging'
+            'rocmroll workspace remove --workspace staging --force'
         )
     }
 }
@@ -669,7 +708,6 @@ switch ($Command.ToLower()) {
     }
 
     'launch' {
-        Import-Module (Join-Path $ModulesDir 'RocmRoll.Config.psm1')   -Force -Global
         Import-Module (Join-Path $ModulesDir 'RocmRoll.State.psm1')    -Force -Global
         Import-Module (Join-Path $ModulesDir 'RocmRoll.Launcher.psm1') -Force -Global
 
@@ -772,7 +810,6 @@ switch ($Command.ToLower()) {
     }
 
     'list' {
-        Import-Module (Join-Path $ModulesDir 'RocmRoll.Config.psm1') -Force -Global
         Import-Module (Join-Path $ModulesDir 'RocmRoll.State.psm1')  -Force -Global
         $cfg = Get-Config
         $instances = @(Get-ChildItem $cfg.InstancesFolder -Directory -ErrorAction SilentlyContinue)
@@ -790,7 +827,6 @@ switch ($Command.ToLower()) {
 
     'remove' {
         Assert-Param -Value $InstanceName -Flag '--instance' -Command 'remove'
-        Import-Module (Join-Path $ModulesDir 'RocmRoll.Config.psm1')       -Force -Global
         Import-Module (Join-Path $ModulesDir 'RocmRoll.Logging.psm1')      -Force -Global
         Import-Module (Join-Path $ModulesDir 'RocmRoll.State.psm1')        -Force -Global
         Import-Module (Join-Path $ModulesDir 'RocmRoll.ComfyDesktop.psm1') -Force -Global
@@ -838,7 +874,6 @@ switch ($Command.ToLower()) {
     }
 
     'cache' {
-        Import-Module (Join-Path $ModulesDir 'RocmRoll.Config.psm1')  -Force -Global
         Import-Module (Join-Path $ModulesDir 'RocmRoll.Logging.psm1') -Force -Global
         Import-Module (Join-Path $ModulesDir 'RocmRoll.Cache.psm1')   -Force -Global
         $sub = if ($RemainingArgs.Count -gt 0 -and $RemainingArgs[0] -notlike '-*') { $RemainingArgs[0] } else { 'list' }
@@ -862,7 +897,6 @@ switch ($Command.ToLower()) {
     }
 
     'logs' {
-        Import-Module (Join-Path $ModulesDir 'RocmRoll.Config.psm1') -Force -Global
         $cfg  = Get-Config
         $logs = Get-ChildItem $cfg.LogsFolder -Recurse -File -Filter '*.log' -ErrorAction SilentlyContinue |
                 Sort-Object LastWriteTime -Descending | Select-Object -First 20
@@ -870,7 +904,6 @@ switch ($Command.ToLower()) {
     }
 
     'config' {
-        Import-Module (Join-Path $ModulesDir 'RocmRoll.Config.psm1') -Force -Global
         $sub = if ($RemainingArgs.Count -gt 0 -and $RemainingArgs[0] -notlike '-*') { $RemainingArgs[0] } else { 'show' }
         switch ($sub) {
             'show' {
@@ -910,11 +943,21 @@ switch ($Command.ToLower()) {
                     Write-Host ('    {0,-14} {1}' -f "$($e.Key):", $cfg[$e.Value]) -ForegroundColor Gray
                 }
                 Write-Host ''
+                Write-Host '  Workspace:' -ForegroundColor Yellow
+                Write-Host ''
+                $wsName = if ($cfg.Contains('ActiveWorkspace') -and $cfg['ActiveWorkspace']) { $cfg['ActiveWorkspace'] } else { '(none)' }
+                Write-Host ('    {0,-14} {1}' -f 'Active:', $wsName) -ForegroundColor Gray
+                $wsDir = if ($cfg.Contains('WorkspacesFolder')) { $cfg['WorkspacesFolder'] } else { '' }
+                if ($wsDir) {
+                    Write-Host ('    {0,-14} {1}' -f 'Folder:', $wsDir) -ForegroundColor Gray
+                }
+                Write-Host ''
                 if (-not $active) {
                     Write-Host "  Tip: run 'rocmroll config init' to create rocmroll.ini." -ForegroundColor DarkGray
                 } else {
                     Write-Host "  Edit $iniPath to customise paths." -ForegroundColor DarkGray
                 }
+                Write-Host "  Tip: run 'rocmroll workspace create' to set up named workspaces." -ForegroundColor DarkGray
                 Write-Host ''
             }
             'init' {
@@ -940,7 +983,6 @@ switch ($Command.ToLower()) {
     }
 
     'profile' {
-        Import-Module (Join-Path $ModulesDir 'RocmRoll.Config.psm1')    -Force -Global
         Import-Module (Join-Path $ModulesDir 'RocmRoll.Logging.psm1')   -Force -Global
         Import-Module (Join-Path $ModulesDir 'RocmRoll.Profiles.psm1')  -Force -Global
         $cfg    = Get-Config
@@ -993,6 +1035,136 @@ switch ($Command.ToLower()) {
         }
     }
 
+    'workspace' {
+        Import-Module (Join-Path $ModulesDir 'RocmRoll.Logging.psm1')    -Force -Global
+        Import-Module (Join-Path $ModulesDir 'RocmRoll.Workspace.psm1')  -Force -Global
+        $cfg    = Get-Config
+        $subCmd = if ($RemainingArgs.Count -gt 0 -and $RemainingArgs[0] -notlike '-*') { $RemainingArgs[0].ToLower() } else { 'list' }
+
+        switch ($subCmd) {
+            'list' {
+                $all      = Get-WorkspaceList -Config $cfg
+                $activeWs = $cfg['ActiveWorkspace']
+                Write-Host ''
+                Write-Host '  ROCmRoll Workspaces' -ForegroundColor Cyan
+                Write-Host ''
+                if (-not $activeWs) {
+                    Write-Host ("    {0,-20}{1}" -f '(default) [active]', ' - paths from rocmroll.ini / built-in defaults') -ForegroundColor Green
+                }
+                if ($all.Count -eq 0) {
+                    if ($activeWs) {
+                        Write-Host "  No workspace files found in: $($cfg['WorkspacesFolder'])" -ForegroundColor Yellow
+                    }
+                    Write-Host "  Run 'rocmroll workspace create --workspace NAME' to create one." -ForegroundColor DarkGray
+                } else {
+                    foreach ($ws in $all) {
+                        $tag  = if ($ws.IsActive) { ' [active]' } else { '' }
+                        $col  = if ($ws.IsActive) { 'Green' } else { 'Gray' }
+                        $desc = if ($ws.Description) { " - $($ws.Description)" } else { '' }
+                        Write-Host ("    {0,-20}{1}" -f "$($ws.Name)$tag", $desc) -ForegroundColor $col
+                    }
+                }
+                Write-Host ''
+            }
+            'show' {
+                if (-not $WorkspaceName) {
+                    Write-Host ''
+                    Write-Host "  ERROR  --workspace NAME is required for 'rocmroll workspace show'" -ForegroundColor Red
+                    Write-Host ''
+                    exit 1
+                }
+                $obj = Get-WorkspaceObject -Name $WorkspaceName -Config $cfg
+                Write-Host ''
+                Write-Host '  ROCmRoll Workspace Detail' -ForegroundColor Cyan
+                $obj | Show-WorkspaceDetail -Config $cfg
+                Write-Host ''
+            }
+            'create' {
+                New-WorkspaceInteractive -Name $WorkspaceName -Config $cfg
+            }
+            'use' {
+                if (-not $WorkspaceName) {
+                    # Interactive selector when multiple workspaces exist
+                    $all = Get-WorkspaceList -Config $cfg
+                    if ($all.Count -eq 0) {
+                        Write-Host ''
+                        Write-Host '  No workspaces found. Run: rocmroll workspace create --workspace NAME' -ForegroundColor Yellow
+                        Write-Host ''
+                        exit 1
+                    }
+                    if ($all.Count -eq 1) {
+                        $WorkspaceName = $all[0].Name
+                        Write-Host ''
+                        Write-Host "  Auto-selected workspace: $WorkspaceName" -ForegroundColor DarkGray
+                        Write-Host ''
+                    } else {
+                        Write-Host ''
+                        Write-Host '  ROCmRoll - Switch Workspace' -ForegroundColor Cyan
+                        Write-Host ''
+                        for ($i = 0; $i -lt $all.Count; $i++) {
+                            $ws  = $all[$i]
+                            $num = "[$($i + 1)]".PadRight(5)
+                            $tag = if ($ws.IsActive) { ' [active]' } else { '' }
+                            Write-Host "    $num $($ws.Name)$tag"
+                        }
+                        Write-Host ''
+                        $chosen = $null
+                        while ($null -eq $chosen) {
+                            $choice = Read-Host "  Select (1-$($all.Count)) or Q to quit"
+                            if ($choice -ieq 'q') { Write-Host ''; exit 0 }
+                            $n = 0
+                            if ([int]::TryParse($choice.Trim(), [ref]$n) -and $n -ge 1 -and $n -le $all.Count) {
+                                $chosen = $all[$n - 1].Name
+                            } else {
+                                Write-Host "  Please enter a number between 1 and $($all.Count)." -ForegroundColor Yellow
+                            }
+                        }
+                        $WorkspaceName = $chosen
+                        Write-Host ''
+                    }
+                }
+                Set-ActiveWorkspace -Name $WorkspaceName -Config $cfg
+                Write-Host ''
+                Write-Host "  Active workspace: $WorkspaceName" -ForegroundColor Green
+                Write-Host "  Run 'rocmroll config show' to verify resolved paths." -ForegroundColor DarkGray
+                Write-Host ''
+            }
+            'edit' {
+                if (-not $WorkspaceName) {
+                    Write-Host ''
+                    Write-Host "  ERROR  --workspace NAME is required for 'rocmroll workspace edit'" -ForegroundColor Red
+                    Write-Host ''
+                    exit 1
+                }
+                New-WorkspaceInteractive -Name $WorkspaceName -EditMode -Config $cfg
+            }
+            'remove' {
+                if (-not $WorkspaceName) {
+                    Write-Host ''
+                    Write-Host "  ERROR  --workspace NAME is required for 'rocmroll workspace remove'" -ForegroundColor Red
+                    Write-Host ''
+                    exit 1
+                }
+                Remove-Workspace -Name $WorkspaceName -Force:$FlagForce -Config $cfg
+            }
+            'init' {
+                if (-not $WorkspaceName) {
+                    Write-Host ''
+                    Write-Host "  ERROR  --workspace NAME is required for 'rocmroll workspace init'" -ForegroundColor Red
+                    Write-Host ''
+                    exit 1
+                }
+                Export-CurrentAsWorkspace -Name $WorkspaceName -Config $cfg
+            }
+            default {
+                Write-Host ''
+                Write-Host "  Unknown workspace sub-command: '$subCmd'. Use: list, show, create, use, edit, remove, init" -ForegroundColor Yellow
+                Show-CommandHelp -Command 'workspace'
+                Write-Host ''
+            }
+        }
+    }
+
     'help' {
         # rocmroll help <command>  ->  per-command detail
         $helpTarget = if ($RemainingArgs.Count -gt 0 -and $RemainingArgs[0] -notlike '-*') { $RemainingArgs[0] } else { '' }
@@ -1003,6 +1175,7 @@ switch ($Command.ToLower()) {
             Write-Host ''
             $globalOpts = [ordered]@{
                 '--instance   NAME'       = 'Target instance name'
+                '--workspace  NAME'       = 'Transient workspace override — uses that workspace paths for this command only without changing the active workspace in rocmroll.ini'
                 '--channel    VALUE'      = 'Update channel: stable | nightly | preview | rdna1 | rdna2  (default: stable; preview uses v2 nightly index; rdna1/rdna2 auto-selected for RDNA 1/2 GPUs)'
                 '--python     VERSION'    = 'Python version                             (default: 3.12.10)'
                 '--port       PORT'       = 'ComfyUI listen port                        (default: 8188)'
@@ -1045,7 +1218,7 @@ switch ($Command.ToLower()) {
         Write-Host ""
         Write-Host "  Advanced commands:" -ForegroundColor Yellow
         Write-Host ""
-        $advanced = @('init','rocm','comfy','logs','config','profile')
+        $advanced = @('init','rocm','comfy','logs','config','profile','workspace')
         foreach ($cmd in $advanced) {
             $d = $script:CommandDefs[$cmd]
             if ($d) { Write-Host ("    {0,-18} {1}" -f $cmd, $d.Synopsis) }
