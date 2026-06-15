@@ -1228,7 +1228,12 @@ ROCmRoll builds on the work of these projects and people:
 - [patientx-cfz](https://github.com/patientx-cfz/comfyui-rocm) — for pioneering ComfyUI ROCm setup guides and tooling on Windows that helped shape this project.
 - [0xDELUXA](https://github.com/0xDELUXA) — for early research and tooling around ROCm on Windows that informed this project.
 - [kijai](https://github.com/kijai) — for custom node work and contributions to the ComfyUI ecosystem.
+- [Apophis3158](https://github.com/Apophis3158) - for awesome patches and fixes for ROCm.
 
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## About
+
+[![Made in Brazil](https://selo.feitonobrasil.dev.br/en/colorido/1x.svg)](https://feitonobrasil.dev.br)
