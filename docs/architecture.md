@@ -435,9 +435,63 @@ Example `channels.json`:
       "tritonWindows": "3.6.0.post25",
       "sageAttention": "1.0.6"
     }
+  },
+  "rdna1": {
+    "description": "Experimental channel for RDNA 1 (gfx101X) GPUs. Very unstable -- no official AMD Windows ROCm support.",
+    "comfyui": {
+      "source": "git",
+      "repo": "https://github.com/Comfy-Org/ComfyUI.git",
+      "ref": "v0.24.0",
+      "pinCommit": null
+    },
+    "python": {
+      "version": "3.12.10"
+    },
+    "rocm": {
+      "source": "index",
+      "indexBase": "https://rocm.nightlies.amd.com/v2",
+      "allowPreRelease": false,
+      "allowTorchPreRelease": false,
+      "allowRocmPreRelease": false,
+      "packageSet": "latest",
+      "torchPackages": ["torch", "torchvision", "torchaudio"],
+      "rocmPackages": ["rocm[libraries,devel]"]
+    },
+    "packages": {
+      "tritonWindows": "3.6.0.post25",
+      "sageAttention": "1.0.6"
+    }
+  },
+  "rdna2": {
+    "description": "Experimental channel for RDNA 2 (gfx103X) GPUs. Very unstable -- no official AMD Windows ROCm support.",
+    "comfyui": {
+      "source": "git",
+      "repo": "https://github.com/Comfy-Org/ComfyUI.git",
+      "ref": "v0.24.0",
+      "pinCommit": null
+    },
+    "python": {
+      "version": "3.12.10"
+    },
+    "rocm": {
+      "source": "index",
+      "indexBase": "https://rocm.nightlies.amd.com/v2-staging",
+      "allowPreRelease": false,
+      "allowTorchPreRelease": true,
+      "allowRocmPreRelease": false,
+      "packageSet": "latest",
+      "torchPackages": ["torch", "torchvision", "torchaudio"],
+      "rocmPackages": ["rocm[libraries,devel]"]
+    },
+    "packages": {
+      "tritonWindows": "3.6.0.post25",
+      "sageAttention": "1.0.6"
+    }
   }
 }
 ```
+
+> **Warning — `rdna1` and `rdna2` are experimental and very unstable.** AMD has no official Windows ROCm support for RDNA 1 (`gfx101X`) and RDNA 2 (`gfx103X`) GPU families. Their wheels exist only on AMD's nightly staging indexes and can disappear or break without notice. These channels are auto-selected when `--channel stable` is used with a detected RDNA 1/2 GPU. Treat them as best-effort only.
 
 ## 10. State management
 
@@ -912,21 +966,23 @@ Example `rocm-architectures.json`:
     "supported": true
   },
   "gfx103X": {
-    "index": "gfx103X-dgpu",
+    "index": "gfx103X-all",
     "architecture": "RDNA 2",
     "devices": ["RX 6900", "RX 6800", "RX 6700", "RX 6600", "RX 6500"],
-    "requiresPreRelease": false,
+    "requiresPreRelease": true,
     "supported": true
   },
   "gfx101X": {
     "index": "gfx101X-dgpu",
     "architecture": "RDNA 1",
     "devices": ["RX 5700", "RX 5600", "RX 5500"],
-    "requiresPreRelease": false,
+    "requiresPreRelease": true,
     "supported": true
   }
 }
 ```
+
+> **Warning — RDNA 1 (`gfx101X`) and RDNA 2 (`gfx103X`) are experimental and very unstable.** AMD has no official Windows ROCm support for these GPU families. Their wheels exist only on AMD's nightly staging indexes and are not covered by AMD's Windows ROCm support policy. Both families require `requiresPreRelease: true` even though the dedicated `rdna1`/`rdna2` channels set `allowPreRelease: false` — the flag controls pip's `--pre` argument, while `requiresPreRelease` in the manifest signals that these packages come from pre-release index feeds.
 
 `RocmRoll.Hardware` loads this manifest directly, so the GPU table can evolve without editing code.
 
@@ -977,6 +1033,8 @@ The `rdna1` and `rdna2` channels use these fields to mirror the reference instal
 | --- | --- | --- |
 | `rdna1` | `false` | `false` |
 | `rdna2` | `true` | `false` |
+
+> **Warning — `rdna1` and `rdna2` are experimental and very unstable.** AMD publishes no official Windows ROCm release wheels for RDNA 1 or RDNA 2. Package availability on the nightly indexes can change without notice. These channels should be treated as best-effort community support only.
 
 Stable install order:
 
@@ -1226,6 +1284,12 @@ Custom node manifest:
     {
       "name": "ComfyUI-HFRemoteVae",
       "repo": "https://github.com/kijai/ComfyUI-HFRemoteVae",
+      "ref": "main",
+      "installRequirements": true
+    },
+    {
+      "name": "ComfyUI-INT8-Fast-ROCM",
+      "repo": "https://github.com/patientx/ComfyUI-INT8-Fast-ROCM",
       "ref": "main",
       "installRequirements": true
     }
@@ -1780,6 +1844,7 @@ Four profiles ship with ROCmRoll in the `profiles\` directory:
 | `stable-dynamic-vram` | `[]` | Stable + `--enable-dynamic-vram`. For VRAM-limited GPUs. |
 | `optimized` | `["nightly"]` | Full performance: Flash-Attention, MIOpen tuning, SageAttention, dynamic VRAM. |
 | `performance-autotune` | `[]` | Like optimized, adds aggressive MIOpen and Triton autotuning. First run is slow; subsequent runs use cached kernels. Sets `COMFYUI_ENABLE_MIOPEN=1`, `MIOPEN_SEARCH_CUTOFF=100`, `TRITON_CACHE_AUTOTUNING=1`. |
+| `experimental` | `[]` | Placeholder for custom patches and unverified wheels. Not applied by default. |
 
 ### Profile resolution at launch time
 

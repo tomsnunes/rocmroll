@@ -170,6 +170,14 @@ Current preview profile:
 
 ### RDNA1 and RDNA2
 
+> **Warning — RDNA 1 (`gfx101X`) and RDNA 2 (`gfx103X`) are experimental and very unstable.**
+> AMD has no official Windows ROCm support for these GPU families. Their ROCm and PyTorch wheels
+> exist only on AMD's nightly staging indexes, are subject to removal or silent breakage without
+> notice, and are not covered by AMD's Windows ROCm support policy. Expect frequent install
+> failures, torch import errors, and generation quality regressions whenever upstream nightly
+> packages change. Use these channels only if you have one of these GPUs and accept the
+> instability trade-off.
+
 RDNA 1 (`gfx101X`, RX 5000 series) and RDNA 2 (`gfx103X`, RX 6000 series) are not supported on AMD's official Windows stable release index. Their ROCm/PyTorch wheels are sourced from AMD's nightly indexes, so a dedicated channel is used for each family.
 
 `rdna1` and `rdna2` are independent channels — not variants of stable. They pin ComfyUI at `v0.24.0`.
@@ -209,6 +217,7 @@ Profiles live in `profiles\` at the root folder. The directory is configurable v
 | `stable-dynamic-vram` | — | Stable + `--enable-dynamic-vram`. For GPUs with limited VRAM. |
 | `optimized` | `nightly`, `preview` | Full ROCm performance: Flash-Attention Triton, MIOpen, SageAttention, dynamic VRAM. |
 | `performance-autotune` | — | Like optimized but enables aggressive MIOpen and Triton kernel autotuning. First run is slow; subsequent runs use cached kernels. |
+| `experimental` | — | Placeholder for custom patches and unverified wheels. Not applied by default. |
 
 When no `--profile` is specified, the launcher uses the default profile for the install channel (`stable` → `stable`, `nightly` → `optimized`, `preview` → `optimized`).
 
@@ -411,21 +420,21 @@ Multiple fast options can be combined: `"--fast", "fp16_accumulation,autotune"`.
 Currently supported GPU architectures span RDNA 1–4, RDNA 3.5 (Strix Point / Strix Halo / Krackan Point integrated GPUs), Radeon Pro VII (Vega/GCN5), and AMD Instinct MI300/MI325/MI350/MI355 series (CDNA).
 GPU architecture mapping lives in `source\manifests\rocm-architectures.json` and is used by `RocmRoll.Hardware`.
 
-| GFX family | ROCm index | Architecture | Example devices | Pre-release required |
-| --- | --- | --- | --- | --- |
-| `gfx120X` | `gfx120X-all` | RDNA 4 | RX 9060, RX 9070, RX 9070 XT | yes |
-| `gfx1150` | `gfx1150` | RDNA 3.5 / Strix Point | Radeon 890M | yes |
-| `gfx1151` | `gfx1151` | RDNA 3.5 / Strix Halo | Radeon 8060S, 8050S, 8040S, 880M | yes |
-| `gfx1152` | `gfx1152` | RDNA 3.5 / Krackan Point | Radeon 860M, 840M, 820M | yes |
-| `gfx1153` | `gfx1153` | RDNA 3.5 | — | yes |
-| `gfx110X` | `gfx110X-all` | RDNA 3 | RX 7900, RX 7800, RX 7700, RX 7600, W7900, W7800, W7700, Radeon 780M, 760M, 740M | yes |
-| `gfx103X` | `gfx103X-all` | RDNA 2 (dGPU) | RX 6950, RX 6900, RX 6800, RX 6700, RX 6600, RX 6500, W6800, V620 | yes |
-| `gfx101X` | `gfx101X-dgpu` | RDNA 1 | RX 5700, RX 5600, RX 5500, Radeon Pro V520 | yes |
-| `gfx90X` | `gfx90X-dcgpu` | Radeon Pro VII | Radeon Pro VII | no |
-| `gfx94X` | `gfx94X-dcgpu` | MI300 / MI325 | MI300A, MI300X, MI325X | no |
-| `gfx950` | `gfx950-dcgpu` | MI350 / MI355 | MI350X, MI355X | yes |
+| GFX family | ROCm index | Architecture | Example devices | Pre-release required | Status |
+| --- | --- | --- | --- | --- | --- |
+| `gfx120X` | `gfx120X-all` | RDNA 4 | RX 9060, RX 9070, RX 9070 XT | yes | Supported |
+| `gfx1150` | `gfx1150` | RDNA 3.5 / Strix Point | Radeon 890M | yes | Supported |
+| `gfx1151` | `gfx1151` | RDNA 3.5 / Strix Halo | Radeon 8060S, 8050S, 8040S, 880M | yes | Supported |
+| `gfx1152` | `gfx1152` | RDNA 3.5 / Krackan Point | Radeon 860M, 840M, 820M | yes | Supported |
+| `gfx1153` | `gfx1153` | RDNA 3.5 | — | yes | Supported |
+| `gfx110X` | `gfx110X-all` | RDNA 3 | RX 7900, RX 7800, RX 7700, RX 7600, W7900, W7800, W7700, Radeon 780M, 760M, 740M | yes | Supported |
+| `gfx103X` | `gfx103X-all` | RDNA 2 (dGPU) | RX 6950, RX 6900, RX 6800, RX 6700, RX 6600, RX 6500, W6800, V620 | yes | **Experimental** |
+| `gfx101X` | `gfx101X-dgpu` | RDNA 1 | RX 5700, RX 5600, RX 5500, Radeon Pro V520 | yes | **Experimental** |
+| `gfx90X` | `gfx90X-dcgpu` | Radeon Pro VII | Radeon Pro VII | no | Supported |
+| `gfx94X` | `gfx94X-dcgpu` | MI300 / MI325 | MI300A, MI300X, MI325X | no | Supported |
+| `gfx950` | `gfx950-dcgpu` | MI350 / MI355 | MI350X, MI355X | yes | Supported |
 
-> **Note — RDNA 1/2 (`gfx101X`, `gfx103X`):** AMD's official Windows release wheels do not support these families, and torch wheels for them are only published on AMD's staging nightly index (`https://rocm.nightlies.amd.com/v2-staging/`). When `--channel stable` is used with an RDNA 1 or RDNA 2 GPU, ROCmRoll automatically switches to the `rdna1` or `rdna2` channel respectively. See [rdna1 and rdna2](#rdna1-and-rdna2) for details.
+> **Warning — RDNA 1/2 (`gfx101X`, `gfx103X`) are experimental and very unstable.** AMD has no official Windows ROCm support for these families. Their wheels exist only on AMD's nightly staging index and can disappear or break without notice. When `--channel stable` is used with one of these GPUs, ROCmRoll automatically switches to the `rdna1` or `rdna2` channel. See [RDNA1 and RDNA2](#rdna1-and-rdna2) for details.
 
 Manual override example:
 
@@ -627,7 +636,7 @@ Global options:
 | Option | Meaning |
 | --- | --- |
 | `--instance NAME` | Target instance name |
-| `--channel stable\|nightly\|preview\|rdna1\|rdna2` | Update channel, default `stable` (rdna1/rdna2 auto-selected for RDNA 1/2 GPUs) |
+| `--channel stable\|nightly\|preview\|rdna1\|rdna2` | Update channel, default `stable`; `rdna1`/`rdna2` are experimental and very unstable (auto-selected for RDNA 1/2 GPUs when stable is requested) |
 | `--python VERSION` | Python version, default `3.12.10` |
 | `--port PORT` | ComfyUI launch port, default `8188` |
 | `--gfx ARCH` | Override GPU architecture family |
@@ -778,6 +787,7 @@ Default custom nodes are defined in `source\manifests\custom-nodes.json`:
 - `CFZ-SwitchMenu`
 - `CFZ-Caching`
 - `ComfyUI-HFRemoteVae`
+- `ComfyUI-INT8-Fast-ROCM`
 
 ROCmRoll clones missing nodes, optionally updates existing nodes with `--update`, installs each node's `requirements.txt` when requested by the manifest, and logs failures as warnings where possible.
 
