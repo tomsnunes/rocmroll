@@ -477,7 +477,7 @@ Example `channels.json`:
       }
     },
     "packages": {
-      "tritonWindows": "3.6.0.post25",
+      "tritonWindows": "3.7.0.post26",
       "sageAttention": "1.0.6"
     }
   },
@@ -501,7 +501,7 @@ Example `channels.json`:
       "rocmPackages": ["rocm[libraries,devel]"]
     },
     "packages": {
-      "tritonWindows": "3.6.0.post25",
+      "tritonWindows": "3.7.0.post26",
       "sageAttention": "1.0.6"
     }
   },
@@ -525,7 +525,7 @@ Example `channels.json`:
       "rocmPackages": ["rocm[libraries,devel]"]
     },
     "packages": {
-      "tritonWindows": "3.6.0.post25",
+      "tritonWindows": "3.7.0.post26",
       "sageAttention": "1.0.6"
     }
   },
@@ -551,7 +551,7 @@ Example `channels.json`:
       "rocmPackages": ["rocm[libraries,devel]"]
     },
     "packages": {
-      "tritonWindows": "3.6.0.post25",
+      "tritonWindows": "3.7.0.post26",
       "sageAttention": "1.0.6"
     }
   },
@@ -577,7 +577,7 @@ Example `channels.json`:
       "rocmPackages": ["rocm[libraries,devel]"]
     },
     "packages": {
-      "tritonWindows": "3.6.0.post25",
+      "tritonWindows": "3.7.0.post26",
       "sageAttention": "1.0.6"
     }
   }
@@ -625,7 +625,7 @@ Example environment state:
     "torchvision": "installed",
     "torchaudio": "installed",
     "rocmLibrariesDevel": "installed",
-    "tritonWindows": "3.6.0.post25",
+    "tritonWindows": "3.7.0.post26",
     "sageAttention": "1.0.6"
   },
   "status": "ready"
@@ -1432,7 +1432,7 @@ Example manifest:
     "packages": [
       {
         "name": "triton-windows",
-        "version": "3.6.0.post25",
+        "version": "3.7.0.post26",
         "required": true
       },
       {

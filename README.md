@@ -906,7 +906,7 @@ The full install currently applies the `rocm-performance` profile from `source\m
 
 Current packages:
 
-- `triton-windows==3.6.0.post25`
+- `triton-windows==3.7.0.post26`
 - `sageattention==1.0.6`
 - `bitsandbytes` from a release wheel URL
 - `flash-attn` from a release wheel URL
