@@ -14,67 +14,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Logging.psm1')
-
-# ---------------------------------------------------------------------------
-# JSON serialisation (PS 5.1 ConvertTo-Json has formatting quirks)
-# ---------------------------------------------------------------------------
-
-function Invoke-WsJsonEscapeString {
-    param([string]$Value)
-    if ($null -eq $Value) { return '' }
-    ($Value -replace '\\', '\\') -replace '"', '\"' -replace "`r`n", '\n' -replace "`n", '\n' -replace "`t", '\t'
-}
-
-function Format-WorkspaceJson {
-    param([Parameter(Mandatory)][object]$WorkspaceData)
-
-    if ($WorkspaceData -is [System.Collections.IDictionary]) {
-        $name        = [string]$WorkspaceData['name']
-        $description = [string]$WorkspaceData['description']
-        $createdAt   = [string]$WorkspaceData['createdAt']
-        $pathsObj    = $WorkspaceData['paths']
-    } else {
-        $name        = [string]$WorkspaceData.name
-        $description = if ($WorkspaceData.description) { [string]$WorkspaceData.description } else { '' }
-        $createdAt   = if ($WorkspaceData.createdAt)   { [string]$WorkspaceData.createdAt }   else { '' }
-        $pathsObj    = $WorkspaceData.paths
-    }
-
-    $pathEntries = [System.Collections.Generic.List[object]]::new()
-    if ($pathsObj) {
-        if ($pathsObj -is [System.Collections.IDictionary]) {
-            foreach ($k in $pathsObj.Keys) {
-                $pathEntries.Add([PSCustomObject]@{ Key = $k; Val = [string]$pathsObj[$k] })
-            }
-        } else {
-            foreach ($prop in $pathsObj.PSObject.Properties) {
-                $pathEntries.Add([PSCustomObject]@{ Key = $prop.Name; Val = [string]$prop.Value })
-            }
-        }
-    }
-
-    $ln = [System.Collections.Generic.List[string]]::new()
-    $ln.Add('{')
-    $ln.Add("  `"name`": `"$(Invoke-WsJsonEscapeString $name)`",")
-    $ln.Add("  `"description`": `"$(Invoke-WsJsonEscapeString $description)`",")
-    $ln.Add("  `"createdAt`": `"$(Invoke-WsJsonEscapeString $createdAt)`",")
-
-    if ($pathEntries.Count -eq 0) {
-        $ln.Add("  `"paths`": {}")
-    } else {
-        $ln.Add("  `"paths`": {")
-        for ($i = 0; $i -lt $pathEntries.Count; $i++) {
-            $k     = $pathEntries[$i].Key
-            $v     = $pathEntries[$i].Val
-            $comma = if ($i -lt $pathEntries.Count - 1) { ',' } else { '' }
-            $ln.Add("    `"$(Invoke-WsJsonEscapeString $k)`": `"$(Invoke-WsJsonEscapeString $v)`"$comma")
-        }
-        $ln.Add("  }")
-    }
-
-    $ln.Add('}')
-    return $ln -join "`n"
-}
+Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Encoding.psm1')
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -267,9 +207,8 @@ function Write-ActiveSection {
     $filtered.Add('[active]')
     $filtered.Add("workspace = $WorkspaceName")
 
-    $content  = $filtered -join "`r`n"
-    $encoding = New-Object System.Text.UTF8Encoding($false)
-    [System.IO.File]::WriteAllText($IniPath, $content, $encoding)
+    $content = $filtered -join "`r`n"
+    [System.IO.File]::WriteAllText($IniPath, $content, (New-RocmRollUtf8NoBomEncoding))
 }
 
 # ---------------------------------------------------------------------------
@@ -355,10 +294,6 @@ function New-WorkspaceInteractive {
         if ($chosen) { $paths[$key] = $chosen }
     }
 
-    if (-not (Test-Path $wsFolder)) {
-        New-Item -ItemType Directory -Path $wsFolder -Force | Out-Null
-    }
-
     $wsObj = [ordered]@{
         name        = $Name
         description = $description
@@ -366,9 +301,7 @@ function New-WorkspaceInteractive {
         paths       = $paths
     }
 
-    $json     = Format-WorkspaceJson -WorkspaceData $wsObj
-    $encoding = New-Object System.Text.UTF8Encoding($false)
-    [System.IO.File]::WriteAllText($destPath, $json, $encoding)
+    Save-WorkspaceObject -WorkspaceObj $wsObj -DestPath $destPath -Config $Config
 
     Write-Host ''
     Write-Host "  Workspace '$Name' saved to: $destPath" -ForegroundColor Green
@@ -470,10 +403,6 @@ function Export-CurrentAsWorkspace {
         cache        = $Config['CacheFolder']
     }
 
-    if (-not (Test-Path $wsFolder)) {
-        New-Item -ItemType Directory -Path $wsFolder -Force | Out-Null
-    }
-
     $wsObj = [ordered]@{
         name        = $Name
         description = $Description
@@ -481,13 +410,27 @@ function Export-CurrentAsWorkspace {
         paths       = $paths
     }
 
-    $json     = Format-WorkspaceJson -WorkspaceData $wsObj
-    $encoding = New-Object System.Text.UTF8Encoding($false)
-    [System.IO.File]::WriteAllText($destPath, $json, $encoding)
+    Save-WorkspaceObject -WorkspaceObj $wsObj -DestPath $destPath -Config $Config
 
     Write-Host ''
     Write-Host "  Workspace '$Name' exported to: $destPath" -ForegroundColor Green
     Write-LogSuccess "Current paths exported as workspace '$Name'" -Comp 'RocmRoll.Workspace'
+}
+
+function Save-WorkspaceObject {
+    param(
+        [Parameter(Mandatory)][object]$WorkspaceObj,
+        [Parameter(Mandatory)][string]$DestPath,
+        [hashtable]$Config
+    )
+
+    $wsFolder = $Config['WorkspacesFolder']
+    if (-not (Test-Path $wsFolder)) {
+        New-Item -ItemType Directory -Path $wsFolder -Force | Out-Null
+    }
+
+    $json = Format-RocmRollJson -Data $WorkspaceObj
+    [System.IO.File]::WriteAllText($DestPath, $json, (New-RocmRollUtf8NoBomEncoding))
 }
 
 Export-ModuleMember -Function `

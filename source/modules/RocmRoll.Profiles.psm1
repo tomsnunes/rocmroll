@@ -14,129 +14,21 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Logging.psm1')
+Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Encoding.psm1')
 
 # ---------------------------------------------------------------------------
-# JSON formatter (PS5.1 ConvertTo-Json produces double-spaces and alignment
-# indentation - this function always emits clean 2-space indented JSON)
+# Module-scope option lists (single source of truth for valid values)
 # ---------------------------------------------------------------------------
 
-function Get-ProfileFieldValue {
-    param([object]$Obj, [string]$Key)
-    if ($Obj -is [System.Collections.IDictionary]) { return $Obj[$Key] }
-    $prop = $Obj.PSObject.Properties[$Key]
-    if ($prop) { return $prop.Value }
-    return $null
-}
-
-function Get-ProfileFieldKeys {
-    param([object]$Obj)
-    if ($null -eq $Obj) { return @() }
-    if ($Obj -is [System.Collections.IDictionary]) { return @($Obj.Keys) }
-    return @($Obj.PSObject.Properties.Name)
-}
-
-function Invoke-JsonEscapeString {
-    param([string]$Value)
-    if ($null -eq $Value) { return '' }
-    ($Value -replace '\\', '\\') -replace '"', '\"' -replace "`r`n", '\n' -replace "`n", '\n' -replace "`t", '\t'
-}
-
-function Format-ProfileJson {
-    <#
-    .SYNOPSIS
-        Serializes a profile object/hashtable to clean 2-space-indented JSON.
-        Bypasses PowerShell 5.1 ConvertTo-Json formatting quirks.
-    #>
-    param([Parameter(Mandatory)][object]$ProfileData)
-
-    $ln = [System.Collections.Generic.List[string]]::new()
-
-    $ln.Add('{')
-
-    # Scalar fields
-    $ln.Add("  `"name`": `"$(Invoke-JsonEscapeString (Get-ProfileFieldValue $ProfileData 'name'))`",")
-    $ln.Add("  `"description`": `"$(Invoke-JsonEscapeString (Get-ProfileFieldValue $ProfileData 'description'))`",")
-    $ln.Add("  `"version`": `"$(Invoke-JsonEscapeString (Get-ProfileFieldValue $ProfileData 'version'))`",")
-
-    # defaultForChannels
-    $chans = @(Get-ProfileFieldValue $ProfileData 'defaultForChannels')
-    if ($chans.Count -eq 0) {
-        $ln.Add("  `"defaultForChannels`": [],")
-    } else {
-        $ln.Add("  `"defaultForChannels`": [")
-        for ($i = 0; $i -lt $chans.Count; $i++) {
-            $comma = if ($i -lt $chans.Count - 1) { ',' } else { '' }
-            $ln.Add("    `"$(Invoke-JsonEscapeString $chans[$i])`"$comma")
-        }
-        $ln.Add("  ],")
-    }
-
-    # env
-    $envObj  = Get-ProfileFieldValue $ProfileData 'env'
-    $envKeys = @(Get-ProfileFieldKeys $envObj)
-    if ($envKeys.Count -eq 0) {
-        $ln.Add("  `"env`": {},")
-    } else {
-        $ln.Add("  `"env`": {")
-        for ($i = 0; $i -lt $envKeys.Count; $i++) {
-            $k     = $envKeys[$i]
-            $v     = Get-ProfileFieldValue $envObj $k
-            $comma = if ($i -lt $envKeys.Count - 1) { ',' } else { '' }
-            $ln.Add("    `"$(Invoke-JsonEscapeString $k)`": `"$(Invoke-JsonEscapeString $v)`"$comma")
-        }
-        $ln.Add("  },")
-    }
-
-    # launchArgs
-    $laArr = @(Get-ProfileFieldValue $ProfileData 'launchArgs')
-    if ($laArr.Count -eq 0) {
-        $ln.Add("  `"launchArgs`": [],")
-    } else {
-        $ln.Add("  `"launchArgs`": [")
-        for ($i = 0; $i -lt $laArr.Count; $i++) {
-            $comma = if ($i -lt $laArr.Count - 1) { ',' } else { '' }
-            $ln.Add("    `"$(Invoke-JsonEscapeString $laArr[$i])`"$comma")
-        }
-        $ln.Add("  ],")
-    }
-
-    # legacyGpuOverrides
-    $legObj     = Get-ProfileFieldValue $ProfileData 'legacyGpuOverrides'
-    $legEnvObj  = if ($legObj) { Get-ProfileFieldValue $legObj 'env' } else { $null }
-    $legEnvKeys = @(Get-ProfileFieldKeys $legEnvObj)
-    $legLaArr   = @(if ($legObj) { Get-ProfileFieldValue $legObj 'launchArgs' })
-
-    $ln.Add("  `"legacyGpuOverrides`": {")
-
-    if ($legEnvKeys.Count -eq 0) {
-        $ln.Add("    `"env`": {},")
-    } else {
-        $ln.Add("    `"env`": {")
-        for ($i = 0; $i -lt $legEnvKeys.Count; $i++) {
-            $k     = $legEnvKeys[$i]
-            $v     = Get-ProfileFieldValue $legEnvObj $k
-            $comma = if ($i -lt $legEnvKeys.Count - 1) { ',' } else { '' }
-            $ln.Add("      `"$(Invoke-JsonEscapeString $k)`": `"$(Invoke-JsonEscapeString $v)`"$comma")
-        }
-        $ln.Add("    },")
-    }
-
-    if ($legLaArr.Count -eq 0) {
-        $ln.Add("    `"launchArgs`": []")
-    } else {
-        $ln.Add("    `"launchArgs`": [")
-        for ($i = 0; $i -lt $legLaArr.Count; $i++) {
-            $comma = if ($i -lt $legLaArr.Count - 1) { ',' } else { '' }
-            $ln.Add("      `"$(Invoke-JsonEscapeString $legLaArr[$i])`"$comma")
-        }
-        $ln.Add("    ]")
-    }
-
-    $ln.Add("  }")
-    $ln.Add('}')
-
-    return $ln -join "`n"
-}
+$script:VramModes       = @('auto','gpu-only','highvram','lowvram','novram','cpu')
+$script:AttentionModes  = @('default','sage','flash','split','quad','pytorch')
+$script:PrecisionModes  = @('default','fp16','fp32','bf16','fp8-e4m3fn','fp8-e5m2')
+$script:GlobalPrecModes = @('default','fp16','fp32')
+$script:VaePrecModes    = @('default','fp16','fp32','bf16','cpu')
+$script:TextEncPrecModes= @('default','fp16','fp32','bf16')
+$script:CacheModes      = @('default','classic','lru','none')
+$script:PreviewMethods  = @('auto','none','taesd','latent2rgb')
+$script:FastOptNames    = @('fp16_accumulation','fp8_matrix_mult','cublas_ops','autotune')
 
 # ---------------------------------------------------------------------------
 # Resolution
@@ -344,7 +236,7 @@ function New-ProfileInteractive {
     Write-Host '  -- VRAM & Memory --' -ForegroundColor Yellow
 
     $qVram = (Read-Host '  VRAM mode [auto/gpu-only/highvram/lowvram/novram/cpu] (default: auto)').Trim().ToLower()
-    if ($qVram -notin @('auto','gpu-only','highvram','lowvram','novram','cpu')) { $qVram = 'auto' }
+    if ($qVram -notin $script:VramModes) { $qVram = 'auto' }
 
     $qDynVram = (Read-Host '  Enable dynamic VRAM (--enable-dynamic-vram)? [Y/n]').Trim()
     $wantDynamicVram = $qDynVram -notmatch '^[nN]'
@@ -368,7 +260,7 @@ function New-ProfileInteractive {
     Write-Host '  -- Attention --' -ForegroundColor Yellow
 
     $qAttn = (Read-Host '  Attention mechanism [default/sage/flash/split/quad/pytorch] (default: default)').Trim().ToLower()
-    if ($qAttn -notin @('default','sage','flash','split','quad','pytorch')) { $qAttn = 'default' }
+    if ($qAttn -notin $script:AttentionModes) { $qAttn = 'default' }
 
     # ---------------------------------------------------------------------------
     # Precision
@@ -377,16 +269,16 @@ function New-ProfileInteractive {
     Write-Host '  -- Precision --' -ForegroundColor Yellow
 
     $qGlobalPrec = (Read-Host '  Global precision [default/fp16/fp32] (default: default)').Trim().ToLower()
-    if ($qGlobalPrec -notin @('default','fp16','fp32')) { $qGlobalPrec = 'default' }
+    if ($qGlobalPrec -notin $script:GlobalPrecModes) { $qGlobalPrec = 'default' }
 
     $qUnetPrec = (Read-Host '  UNET precision [default/fp16/fp32/bf16/fp8-e4m3fn/fp8-e5m2] (default: default)').Trim().ToLower()
-    if ($qUnetPrec -notin @('default','fp16','fp32','bf16','fp8-e4m3fn','fp8-e5m2')) { $qUnetPrec = 'default' }
+    if ($qUnetPrec -notin $script:PrecisionModes) { $qUnetPrec = 'default' }
 
     $qVaePrec = (Read-Host '  VAE precision [default/fp16/fp32/bf16/cpu] (default: default)').Trim().ToLower()
-    if ($qVaePrec -notin @('default','fp16','fp32','bf16','cpu')) { $qVaePrec = 'default' }
+    if ($qVaePrec -notin $script:VaePrecModes) { $qVaePrec = 'default' }
 
     $qTextEncPrec = (Read-Host '  Text encoder precision [default/fp16/fp32/bf16] (default: default)').Trim().ToLower()
-    if ($qTextEncPrec -notin @('default','fp16','fp32','bf16')) { $qTextEncPrec = 'default' }
+    if ($qTextEncPrec -notin $script:TextEncPrecModes) { $qTextEncPrec = 'default' }
 
     # ---------------------------------------------------------------------------
     # Cache
@@ -395,7 +287,7 @@ function New-ProfileInteractive {
     Write-Host '  -- Cache --' -ForegroundColor Yellow
 
     $qCache = (Read-Host '  Cache strategy [default/classic/lru/none] (default: default)').Trim().ToLower()
-    if ($qCache -notin @('default','classic','lru','none')) { $qCache = 'default' }
+    if ($qCache -notin $script:CacheModes) { $qCache = 'default' }
     $cacheLruCount = ''
     if ($qCache -eq 'lru') {
         $qLruN = (Read-Host '  LRU cache size (number of node results to cache, e.g. 10)').Trim()
@@ -409,7 +301,7 @@ function New-ProfileInteractive {
     Write-Host '  -- Preview --' -ForegroundColor Yellow
 
     $qPreview = (Read-Host '  Preview method [auto/none/taesd/latent2rgb] (default: auto)').Trim().ToLower()
-    $previewMethod = if ($qPreview -match '^(auto|none|taesd|latent2rgb)$') { $qPreview } else { 'auto' }
+    $previewMethod = if ($qPreview -in $script:PreviewMethods) { $qPreview } else { 'auto' }
 
     $qPreviewSize = (Read-Host '  Preview size in pixels (blank = default 512)').Trim()
     $previewSize = if ($qPreviewSize -match '^\d+$' -and $qPreviewSize -ne '512') { $qPreviewSize } else { '' }
@@ -435,7 +327,7 @@ function New-ProfileInteractive {
     Write-Host ''
     Write-Host '  -- Fast Optimizations --' -ForegroundColor Yellow
 
-    $validFastOpts = @('fp16_accumulation','fp8_matrix_mult','cublas_ops','autotune')
+    $validFastOpts = $script:FastOptNames
     $qFast = (Read-Host '  Fast options - comma-separated from: fp16_accumulation, fp8_matrix_mult, autotune (blank = none)').Trim()
     $fastOpts = @()
     if ($qFast) {
@@ -566,7 +458,6 @@ function New-ProfileInteractive {
 
     $launchArgs = $newLaunchArgs.ToArray()
 
-    # Build final object
     $profileObj = [ordered]@{
         name               = $Name
         description        = $description
@@ -580,18 +471,27 @@ function New-ProfileInteractive {
         }
     }
 
-    # Ensure profiles folder exists
+    Save-ProfileObject -ProfileObj $profileObj -DestPath $destPath -Name $Name -Config $Config
+}
+
+function Save-ProfileObject {
+    param(
+        [Parameter(Mandatory)][object]$ProfileObj,
+        [Parameter(Mandatory)][string]$DestPath,
+        [Parameter(Mandatory)][string]$Name,
+        [hashtable]$Config
+    )
+
     if (-not (Test-Path $Config.ProfilesFolder)) {
         New-Item -ItemType Directory -Path $Config.ProfilesFolder -Force | Out-Null
     }
 
-    $json     = Format-ProfileJson -ProfileData $profileObj
-    $encoding = New-Object System.Text.UTF8Encoding($false)
-    [System.IO.File]::WriteAllText($destPath, $json, $encoding)
+    $json = Format-RocmRollJson -Data $ProfileObj
+    [System.IO.File]::WriteAllText($DestPath, $json, (New-RocmRollUtf8NoBomEncoding))
 
     Write-Host ''
-    Write-Host "  Profile '$Name' saved to: $destPath" -ForegroundColor Green
-    Write-LogSuccess "Profile '$Name' created at '$destPath'" -Comp 'RocmRoll.Profiles'
+    Write-Host "  Profile '$Name' saved to: $DestPath" -ForegroundColor Green
+    Write-LogSuccess "Profile '$Name' created at '$DestPath'" -Comp 'RocmRoll.Profiles'
 }
 
 # ---------------------------------------------------------------------------
@@ -659,7 +559,6 @@ function Resolve-ChannelDefaultProfile {
 }
 
 Export-ModuleMember -Function `
-    Format-ProfileJson, `
     Get-ProfilePath, Get-ProfileObject, Get-ProfileList, `
     Show-ProfileDetail, New-ProfileInteractive, Remove-Profile, `
     Resolve-ChannelDefaultProfile

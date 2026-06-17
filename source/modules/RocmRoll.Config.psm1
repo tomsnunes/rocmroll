@@ -65,6 +65,13 @@ function Resolve-IniPath {
     return [System.IO.Path]::GetFullPath((Join-Path $RootFolder $Value))
 }
 
+function Resolve-WorkspacePathOverride {
+    param($WorkspacePaths, [string]$Key, [string]$Current, [string]$Root)
+    $prop = $WorkspacePaths.PSObject.Properties[$Key]
+    if ($prop -and $prop.Value) { return Resolve-IniPath $prop.Value $Current $Root }
+    return $Current
+}
+
 # ---------------------------------------------------------------------------
 # Core config functions
 # ---------------------------------------------------------------------------
@@ -123,24 +130,15 @@ function Initialize-Config {
                             $userdataFolder = Resolve-IniPath $p['userdata'] (Join-Path $sharedFolder 'user') $RootFolder
                         }
                     }
-                    $wsProp = $wp.PSObject.Properties['userdata']
-                    if ($wsProp -and $wsProp.Value) { $userdataFolder     = Resolve-IniPath $wsProp.Value $userdataFolder     $RootFolder }
-                    $wsProp = $wp.PSObject.Properties['instances']
-                    if ($wsProp -and $wsProp.Value) { $instancesFolder    = Resolve-IniPath $wsProp.Value $instancesFolder    $RootFolder }
-                    $wsProp = $wp.PSObject.Properties['environments']
-                    if ($wsProp -and $wsProp.Value) { $environmentsFolder = Resolve-IniPath $wsProp.Value $environmentsFolder $RootFolder }
-                    $wsProp = $wp.PSObject.Properties['runtimes']
-                    if ($wsProp -and $wsProp.Value) { $runtimesFolder     = Resolve-IniPath $wsProp.Value $runtimesFolder     $RootFolder }
-                    $wsProp = $wp.PSObject.Properties['launchers']
-                    if ($wsProp -and $wsProp.Value) { $launchersFolder    = Resolve-IniPath $wsProp.Value $launchersFolder    $RootFolder }
-                    $wsProp = $wp.PSObject.Properties['profiles']
-                    if ($wsProp -and $wsProp.Value) { $profilesFolder     = Resolve-IniPath $wsProp.Value $profilesFolder     $RootFolder }
-                    $wsProp = $wp.PSObject.Properties['logs']
-                    if ($wsProp -and $wsProp.Value) { $logsFolder         = Resolve-IniPath $wsProp.Value $logsFolder         $RootFolder }
-                    $wsProp = $wp.PSObject.Properties['state']
-                    if ($wsProp -and $wsProp.Value) { $stateFolder        = Resolve-IniPath $wsProp.Value $stateFolder        $RootFolder }
-                    $wsProp = $wp.PSObject.Properties['cache']
-                    if ($wsProp -and $wsProp.Value) { $cacheFolder        = Resolve-IniPath $wsProp.Value $cacheFolder        $RootFolder }
+                    $userdataFolder     = Resolve-WorkspacePathOverride $wp 'userdata'     $userdataFolder     $RootFolder
+                    $instancesFolder    = Resolve-WorkspacePathOverride $wp 'instances'    $instancesFolder    $RootFolder
+                    $environmentsFolder = Resolve-WorkspacePathOverride $wp 'environments' $environmentsFolder $RootFolder
+                    $runtimesFolder     = Resolve-WorkspacePathOverride $wp 'runtimes'     $runtimesFolder     $RootFolder
+                    $launchersFolder    = Resolve-WorkspacePathOverride $wp 'launchers'    $launchersFolder    $RootFolder
+                    $profilesFolder     = Resolve-WorkspacePathOverride $wp 'profiles'     $profilesFolder     $RootFolder
+                    $logsFolder         = Resolve-WorkspacePathOverride $wp 'logs'         $logsFolder         $RootFolder
+                    $stateFolder        = Resolve-WorkspacePathOverride $wp 'state'        $stateFolder        $RootFolder
+                    $cacheFolder        = Resolve-WorkspacePathOverride $wp 'cache'        $cacheFolder        $RootFolder
                 }
             } catch { }
         }
