@@ -382,6 +382,24 @@ function Invoke-InstallRocm {
         Write-LogSuccess "ROCm SDK packages installed" -Comp 'RocmRoll.Rocm'
     }
 
+    # --- Step 0: Pre-install torch dependencies from PyPI ---
+    # torchDeps seeds packages (mpmath, setuptools<82, etc.) that exist only on PyPI.
+    # This must run before the ROCm --index-url call, which replaces PyPI as the default index.
+    if ($installPlan.torchDeps.Count -gt 0) {
+        Write-LogInfo "Pre-installing torch dependencies from PyPI" -Comp 'RocmRoll.Rocm' -Op 'InstallTorchDeps' -Inst $EnvironmentName
+        $torchDepsArgs = @(
+            '-m', 'pip', 'install',
+            '--cache-dir', $cfg.PipCacheFolder,
+            '--upgrade-strategy', 'only-if-needed'
+        ) + $installPlan.torchDeps
+        $torchDepsExitCode = Invoke-LoggedNativeCommand -FilePath $pythonExe -Arguments $torchDepsArgs `
+            -Comp 'RocmRoll.Rocm' -Op 'InstallTorchDeps' -Inst $EnvironmentName
+        if ($torchDepsExitCode -ne 0) {
+            throw "ROCMROLL-ROCM-012: Failed to pre-install torch dependencies from PyPI (exit $torchDepsExitCode)"
+        }
+        Write-LogSuccess "Torch dependencies pre-installed from PyPI" -Comp 'RocmRoll.Rocm'
+    }
+
     # --- Step 1: torch, torchvision, torchaudio ---
     if ($installPlan.torchArgs.Count -eq 0) {
         throw "ROCMROLL-ROCM-011: ROCm profile did not resolve any torch package arguments."
