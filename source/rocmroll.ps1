@@ -52,6 +52,7 @@ function Import-AllModules {
         'RocmRoll.ComfyUI',
         'RocmRoll.CustomNodes',
         'RocmRoll.Packages',
+        'RocmRoll.ComfyPatch',
         'RocmRoll.Launcher',
         'RocmRoll.Profiles',
         'RocmRoll.Validation',
@@ -167,6 +168,7 @@ $EnvName        = Get-FlagValue -ArgList $RemainingArgs -Name 'env'
 $OlderThanDays  = Get-FlagValue -ArgList $RemainingArgs -Name 'older-than-days'
 $PortArg        = Get-FlagValue -ArgList $RemainingArgs -Name 'port'
 $ProfileName    = Get-FlagValue -ArgList $RemainingArgs -Name 'profile'
+$PatchId        = Get-FlagValue -ArgList $RemainingArgs -Name 'patch-id'
 
 $FlagForce      = Get-Flag -ArgList $RemainingArgs -Name 'force'
 $FlagQuiet      = Get-Flag -ArgList $RemainingArgs -Name 'quiet'
@@ -414,6 +416,24 @@ $script:CommandDefs = [ordered]@{
             'rocmroll install --instance rocm-stable --profile stable-dynamic-vram'
             'rocmroll launch  --instance rocm-stable --profile performance-autotune'
             'rocmroll repair  --instance rocm-stable --component launchers --profile optimized'
+        )
+    }
+    'patch' = @{
+        Synopsis = 'Manage ComfyUI instance patches (apply, list, remove)'
+        Usage    = 'rocmroll patch <list|apply|remove> [--instance NAME] [--patch-id ID]'
+        Params   = @(
+            [ordered]@{ Flag = 'list';                          Required = $false; Default = '';  Desc = 'List all available patches (without --instance) or applied status (with --instance)' }
+            [ordered]@{ Flag = 'apply  --instance NAME';        Required = $false; Default = '';  Desc = 'Apply all applicable patches (or one specific patch with --patch-id)' }
+            [ordered]@{ Flag = 'remove --instance NAME';        Required = $false; Default = '';  Desc = 'Remove a specific patch and restore the original file' }
+            [ordered]@{ Flag = '--instance NAME';               Required = $false; Default = '';  Desc = 'Target instance' }
+            [ordered]@{ Flag = '--patch-id ID';                 Required = $false; Default = '';  Desc = 'Target a specific patch by ID' }
+        )
+        Examples = @(
+            'rocmroll patch list'
+            'rocmroll patch list --instance rocm-stable'
+            'rocmroll patch apply --instance rocm-stable'
+            'rocmroll patch apply --instance rocm-stable --patch-id 001-avoid-comfyui-crashes-dynamic-vram'
+            'rocmroll patch remove --instance rocm-stable --patch-id 001-avoid-comfyui-crashes-dynamic-vram'
         )
     }
     'config' = @{
@@ -1035,6 +1055,39 @@ switch ($Command.ToLower()) {
         }
     }
 
+    'patch' {
+        Import-Module (Join-Path $ModulesDir 'RocmRoll.Logging.psm1')    -Force -Global
+        Import-Module (Join-Path $ModulesDir 'RocmRoll.Config.psm1')     -Force -Global
+        Import-Module (Join-Path $ModulesDir 'RocmRoll.Encoding.psm1')   -Force -Global
+        Import-Module (Join-Path $ModulesDir 'RocmRoll.State.psm1')      -Force -Global
+        Import-Module (Join-Path $ModulesDir 'RocmRoll.ComfyPatch.psm1') -Force -Global
+        $subCmd = if ($RemainingArgs.Count -gt 0 -and $RemainingArgs[0] -notlike '-*') { $RemainingArgs[0].ToLower() } else { 'list' }
+        switch ($subCmd) {
+            'list' {
+                Show-ComfyPatchList -InstanceName $InstanceName
+            }
+            'apply' {
+                Assert-Param -Value $InstanceName -Flag '--instance' -Command 'patch apply'
+                if ($PatchId) {
+                    Invoke-ApplyComfyPatch -PatchId $PatchId -InstanceName $InstanceName
+                } else {
+                    Invoke-ApplyAllComfyPatches -InstanceName $InstanceName
+                }
+            }
+            'remove' {
+                Assert-Param -Value $InstanceName -Flag '--instance' -Command 'patch remove'
+                Assert-Param -Value $PatchId      -Flag '--patch-id' -Command 'patch remove'
+                Invoke-RemoveComfyPatch -PatchId $PatchId -InstanceName $InstanceName
+            }
+            default {
+                Write-Host ''
+                Write-Host "  Unknown patch sub-command: '$subCmd'. Use: list, apply, remove" -ForegroundColor Yellow
+                Show-CommandHelp -Command 'patch'
+                Write-Host ''
+            }
+        }
+    }
+
     'workspace' {
         Import-Module (Join-Path $ModulesDir 'RocmRoll.Logging.psm1')    -Force -Global
         Import-Module (Join-Path $ModulesDir 'RocmRoll.Workspace.psm1')  -Force -Global
@@ -1175,7 +1228,7 @@ switch ($Command.ToLower()) {
             Write-Host ''
             $globalOpts = [ordered]@{
                 '--instance   NAME'       = 'Target instance name'
-                '--workspace  NAME'       = 'Transient workspace override — uses that workspace paths for this command only without changing the active workspace in rocmroll.ini'
+                '--workspace  NAME'       = 'Transient workspace override - uses that workspace paths for this command only without changing the active workspace in rocmroll.ini'
                 '--channel    VALUE'      = 'Update channel: stable | nightly | preview | rdna1 | rdna2  (default: stable; preview uses v2 nightly index; rdna1/rdna2 auto-selected for RDNA 1/2 GPUs)'
                 '--python     VERSION'    = 'Python version                             (default: 3.12.10)'
                 '--port       PORT'       = 'ComfyUI listen port                        (default: 8188)'
@@ -1218,7 +1271,7 @@ switch ($Command.ToLower()) {
         Write-Host ""
         Write-Host "  Advanced commands:" -ForegroundColor Yellow
         Write-Host ""
-        $advanced = @('init','rocm','comfy','logs','config','profile','workspace')
+        $advanced = @('init','rocm','comfy','logs','config','profile','workspace','patch')
         foreach ($cmd in $advanced) {
             $d = $script:CommandDefs[$cmd]
             if ($d) { Write-Host ("    {0,-18} {1}" -f $cmd, $d.Synopsis) }

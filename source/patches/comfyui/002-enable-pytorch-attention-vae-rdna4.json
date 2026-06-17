@@ -1,0 +1,29 @@
+{
+  "id": "002-enable-pytorch-attention-vae-rdna4",
+  "version": "1",
+  "title": "Enable PyTorch attention in VAE for AMD RDNA 4",
+  "description": "Removes legacy AMD VAE restriction. ComfyUI disables pytorch attention in VAE for all AMD GPUs due to ROCm < 7 compatibility. This patch enables it for RDNA 4 (gfx120X).",
+  "issue": "https://github.com/Comfy-Org/ComfyUI/pull/8289",
+  "architectures": ["gfx120X"],
+  "files": [
+    {
+      "path": "comfy/model_management.py",
+      "operations": [
+        {
+          "type": "comment-block",
+          "match": "def pytorch_attention_enabled_vae"
+        }
+      ]
+    },
+    {
+      "path": "comfy/ldm/modules/diffusionmodules/model.py",
+      "operations": [
+        {
+          "type": "replace-text",
+          "find": "model_management.pytorch_attention_enabled_vae()",
+          "replace": "model_management.pytorch_attention_enabled()"
+        }
+      ]
+    }
+  ]
+}

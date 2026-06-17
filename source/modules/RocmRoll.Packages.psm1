@@ -4,11 +4,11 @@
     RocmRoll.Packages - Package-profile installation and patch application.
 
 .DESCRIPTION
-    Reads package-profiles.json and patches.json from the manifests folder.
-    Installs packages defined in a named profile and applies any patches
-    referenced by those packages.  Called from Invoke-FullInstall (Core) to
-    handle the ROCm performance stack: triton, sageattention (+patches),
-    bitsandbytes, flash-attn, amd-aiter.
+    Reads package-profiles.json from the manifests folder and patch definitions
+    from source\patches\sageattention\. Installs packages defined in a named
+    profile and applies any patches referenced by those packages. Called from
+    Invoke-FullInstall (Core) to handle the ROCm performance stack: triton,
+    sageattention (+patches), bitsandbytes, flash-attn, amd-aiter.
 #>
 
 Set-StrictMode -Version Latest
@@ -28,10 +28,15 @@ function Get-PackageProfileManifest {
 
 function Get-PatchesManifest {
     Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force -Global
-    $cfg  = Get-Config
-    $path = Join-Path $cfg.ManifestsFolder 'patches.json'
-    if (-not (Test-Path $path)) { throw "ROCMROLL-PKG-002: patches.json not found at '$path'" }
-    return Get-Content $path -Raw -Encoding UTF8 | ConvertFrom-Json
+    $cfg = Get-Config
+    $dir = Join-Path $cfg.SourceFolder 'patches\sageattention'
+    $patches = @()
+    if (Test-Path $dir) {
+        foreach ($f in (Get-ChildItem $dir -Filter '*.json' | Sort-Object Name)) {
+            $patches += (Get-Content $f.FullName -Raw -Encoding UTF8 | ConvertFrom-Json)
+        }
+    }
+    return [PSCustomObject]@{ patches = $patches }
 }
 
 # ---------------------------------------------------------------------------

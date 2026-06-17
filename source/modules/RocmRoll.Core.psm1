@@ -196,6 +196,14 @@ function Invoke-FullInstall {
         Invoke-InstallPackageProfile -ProfileName 'rocm-performance' -EnvironmentName $envName -GfxVersion $gpu.gfx
         Write-StepOk "Performance packages installed"
 
+        # Apply ComfyUI source patches (non-fatal: patch failures log warnings and do not abort install)
+        Import-Module (Join-Path $modDir 'RocmRoll.ComfyPatch.psm1') -Force -Global
+        try {
+            Invoke-ApplyAllComfyPatches -InstanceName $InstanceName
+        } catch {
+            Write-LogWarn "ComfyUI patch pass had errors (install continues): $_" -Comp 'RocmRoll.Core'
+        }
+
         # Generate launchers
         Invoke-GenerateLaunchers -InstanceName $InstanceName -EnvironmentName $envName `
             -GfxVersion $gpu.gfx -RocmIndex $gpu.rocmIndex -Port 8188 -Channel $Channel -ProfileName $ProfileName

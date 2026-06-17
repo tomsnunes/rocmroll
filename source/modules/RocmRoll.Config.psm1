@@ -191,7 +191,9 @@ function Initialize-Config {
         RuntimeStateFolder = Join-Path $stateFolder 'runtimes'
         EnvStateFolder     = Join-Path $stateFolder 'environments'
         InstanceStateFolder= Join-Path $stateFolder 'instances'
-        PatchStateFolder   = Join-Path $stateFolder 'patches'
+        PatchStateFolder      = Join-Path $stateFolder 'patches'
+        ComfyPatchesFolder    = Join-Path $RootFolder 'source\patches\comfyui'
+        ComfyPatchStateFolder = Join-Path $stateFolder 'patches\comfyui'
 
         LogsFolder         = $logsFolder
         LogsInstallFolder  = Join-Path $logsFolder 'install'
@@ -288,6 +290,7 @@ function Initialize-FolderStructure {
         $cfg.EnvStateFolder
         $cfg.InstanceStateFolder
         $cfg.PatchStateFolder
+        $cfg.ComfyPatchStateFolder
         $cfg.LogsFolder
         $cfg.LogsInstallFolder
         $cfg.LogsLaunchFolder
