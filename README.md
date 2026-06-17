@@ -465,11 +465,12 @@ performs the following high-level flow:
 9. Generates `extra_model_paths.yaml`.
 10. Installs default custom nodes.
 11. Installs the `rocm-performance` package profile.
-12. Generates launchers.
-13. Binds the instance path into the environment `python312._pth`.
-14. Writes instance and environment state.
-15. Registers the instance in ComfyUI Desktop if Desktop is present.
-16. Runs validation.
+12. Applies ComfyUI source patches (non-fatal; failures log warnings and do not abort).
+13. Generates launchers.
+14. Binds the instance path into the environment `python312._pth`.
+15. Writes instance and environment state.
+16. Registers the instance in ComfyUI Desktop if Desktop is present.
+17. Runs validation.
 
 Re-running the same command is intended to converge the instance to the requested state and reuse caches where possible.
 
@@ -736,6 +737,7 @@ Advanced commands:
 | `comfy update-nodes` | Pull latest commits for all custom nodes |
 | `comfy add-node` | Install a custom node from a git repository URL |
 | `comfy node-requirements` | Reinstall `requirements.txt` for all custom nodes |
+| `patch` | List, apply, and roll back ComfyUI source patches |
 | `logs` | Show recent log files |
 | `config` | Show or create the `rocmroll.ini` configuration file |
 
@@ -754,7 +756,8 @@ Global options:
 | `--url URL` | Git repository URL (`comfy add-node` only) |
 | `--older-than-days N` | Cache prune age |
 | `--profile NAME` | Execution profile name |
-| `--rollback-patch ID` | Patch ID to roll back |
+| `--patch-id ID` | Patch ID for `patch apply` or `patch remove` |
+| `--rollback-patch ID` | Patch ID to roll back (package patches via `repair`) |
 | `--force` | Force overwrite or stale lock override |
 | `--shared-workflows` | Symlink instance workflows to `shared\workflows` |
 | `--quiet` | Suppress non-error output |
@@ -912,13 +915,95 @@ Current packages:
 - `flash-attn` from a release wheel URL
 - `amd-aiter` from a release wheel URL
 
-The `sageattention` package references the `sageattention-zluda-rdna` patch in `source\manifests\patches.json`. Patch downloads are cached under `.cache\downloads\patches`, originals are backed up under `.state\patches`, and rollback is exposed through:
+The `sageattention` package references the `sageattention-zluda-rdna` patch defined in `source\patches\sageattention\`. Patch downloads are cached under `.cache\downloads\patches`, originals are backed up under `.state\patches`, and rollback is exposed through:
 
 ```powershell
 .\rocmroll.bat repair --instance rocm-stable --rollback-patch sageattention-zluda-rdna
 ```
 
 Package availability for acceleration libraries can be volatile. The manifest is the place to adjust package versions, URLs, required flags, skip architectures, or local experiments.
+
+## ComfyUI Instance Patches
+
+ROCmRoll can apply in-place text patches to ComfyUI source files. These patches target known bugs or AMD-specific behavioural improvements that have not yet landed upstream. Unlike package patches, which replace whole files inside the Python environment, ComfyUI patches operate on the instance checkout using named text operations.
+
+Patch definitions live in `source\patches\comfyui\` as individual JSON files sorted by filename. Two patches ship by default:
+
+| Patch ID | Scope | Summary |
+| --- | --- | --- |
+| `001-avoid-comfyui-crashes-dynamic-vram` | All GPUs | Comments out `STREAM_AIMDO_CAST_BUFFERS.clear()` to prevent an Access Violation crash when using Dynamic VRAM with `comfy-aimdo` after multiple workflow runs. |
+| `002-enable-pytorch-attention-vae-rdna4` | `gfx120X` only | Removes a legacy AMD VAE restriction that disabled PyTorch attention for all AMD GPUs (originally needed for ROCm < 7). Enables it for RDNA 4. |
+
+Patches are applied automatically at the end of `install`. Each patch is idempotent: re-running `install` on an already-patched instance skips patches that are recorded in the instance patch state.
+
+Original files are backed up before modification:
+
+```text
+.state\patches\comfyui\<instance>\<patch-id>\<encoded-filename>
+```
+
+### Patch Commands
+
+List all available patches (with applied status for an instance):
+
+```powershell
+.\rocmroll.bat patch list
+.\rocmroll.bat patch list --instance rocm-stable
+```
+
+Apply all applicable patches to an instance:
+
+```powershell
+.\rocmroll.bat patch apply --instance rocm-stable
+```
+
+Apply a specific patch:
+
+```powershell
+.\rocmroll.bat patch apply --instance rocm-stable --patch-id 001-avoid-comfyui-crashes-dynamic-vram
+```
+
+Roll back a specific patch (restores the backed-up original):
+
+```powershell
+.\rocmroll.bat patch remove --instance rocm-stable --patch-id 001-avoid-comfyui-crashes-dynamic-vram
+```
+
+### Patch JSON Format
+
+A ComfyUI patch is a JSON file at `source\patches\comfyui\<name>.json`:
+
+```json
+{
+  "id": "001-avoid-comfyui-crashes-dynamic-vram",
+  "version": "1",
+  "title": "Avoid ComfyUI crashes when using Dynamic VRAM",
+  "description": "Comments out STREAM_AIMDO_CAST_BUFFERS.clear() ...",
+  "issue": "https://github.com/ROCm/rocm-systems/issues/6191",
+  "architectures": "all",
+  "files": [
+    {
+      "path": "comfy/model_management.py",
+      "operations": [
+        {
+          "type": "comment-line",
+          "match": "STREAM_AIMDO_CAST_BUFFERS.clear()"
+        }
+      ]
+    }
+  ]
+}
+```
+
+`architectures` is either the string `"all"` or an array of GFX family strings (e.g. `["gfx120X"]`). Patches whose architecture list does not include the instance GPU are silently skipped.
+
+Supported operation types:
+
+| `type` | Description |
+| --- | --- |
+| `comment-line` | Comments out every line that contains the `match` substring, preserving indentation |
+| `comment-block` | Comments out a function or block starting at the `match` line, stopping at dedent |
+| `replace-text` | String substitution across the full file content |
 
 ## Launch Behavior
 
@@ -1164,7 +1249,8 @@ The most important modules are:
 | `RocmRoll.Rocm` | ROCm/PyTorch install and validation |
 | `RocmRoll.ComfyUI` | Git mirror, instance clone, dependencies, model paths |
 | `RocmRoll.CustomNodes` | Custom node install/update |
-| `RocmRoll.Packages` | Performance package profiles and patches |
+| `RocmRoll.Packages` | Performance package profiles and site-packages patches |
+| `RocmRoll.ComfyPatch` | ComfyUI instance source-file patch application |
 | `RocmRoll.Launcher` | Launcher generation and launch execution |
 | `RocmRoll.Profiles` | Execution profile management |
 | `RocmRoll.Validation` | Instance validation checks |

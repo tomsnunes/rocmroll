@@ -1465,13 +1465,13 @@ Example manifest:
 }
 ```
 
-## 26. Patch management
+## 26. Package patch management
 
-Any source patch must be explicit, reversible and tracked.
+Package patches replace entire files inside a Python environment's `site-packages`. They are used for packages whose upstream source is incompatible with ROCm/ZLUDA without modification.
 
-Do not silently overwrite package files without a patch manifest.
+Package patch definitions live in `source\patches\sageattention\` as individual JSON files (one file per patch ID). `RocmRoll.Packages` enumerates this directory when looking up a patch by ID.
 
-Example patch manifest:
+Example patch definition (`source\patches\sageattention\sageattention-zluda-rdna.json`):
 
 ```json
 {
@@ -1499,7 +1499,7 @@ Patch algorithm:
 
 ```text
 1. Check target file exists.
-2. Backup original file to .state\patches\<environment>\<patch-id>.
+2. Backup original file to .state\patches\<patch-id>\.
 3. Download replacement file into cache.
 4. Verify non-empty file.
 5. Replace target.
@@ -1512,6 +1512,116 @@ Repair must support:
 ```powershell
 rocmroll repair --instance rocm-stable --component patches
 rocmroll repair --instance rocm-stable --rollback-patch sageattention-zluda-rdna
+```
+
+## 26a. ComfyUI instance patch management
+
+ComfyUI instance patches apply in-place text operations to ComfyUI source files inside the instance checkout. They address known bugs or AMD-specific behavioural improvements that have not yet landed upstream. This system is separate from package patches (section 26) — package patches replace whole files inside the Python environment, while ComfyUI patches modify specific lines or blocks within the ComfyUI source tree.
+
+### Patch storage
+
+Patch definitions live in `source\patches\comfyui\` as individual JSON files, sorted and applied by filename. Per-instance applied-patch state is written to:
+
+```text
+.state\patches\comfyui\<instanceName>.json
+```
+
+Original files are backed up before modification:
+
+```text
+.state\patches\comfyui\<instanceName>\<patchId>\<encoded-filename>
+```
+
+Path encoding replaces `/` and `\` with `---` (same convention as package patch backups).
+
+### Patch JSON schema
+
+```json
+{
+  "id": "001-avoid-comfyui-crashes-dynamic-vram",
+  "version": "1",
+  "title": "Avoid ComfyUI crashes when using Dynamic VRAM",
+  "description": "Human-readable description of the patch",
+  "issue": "https://github.com/ROCm/rocm-systems/issues/6191",
+  "architectures": "all",
+  "files": [
+    {
+      "path": "comfy/model_management.py",
+      "operations": [
+        {
+          "type": "comment-line",
+          "match": "STREAM_AIMDO_CAST_BUFFERS.clear()"
+        }
+      ]
+    }
+  ]
+}
+```
+
+`architectures` is either the string `"all"` or an array of GFX family strings (e.g. `["gfx120X"]`). The architecture check loads the instance's environment state and compares `gpu.gfx` against the array.
+
+### Operation types
+
+| `type` | Description |
+| --- | --- |
+| `comment-line` | Comments out every line containing the `match` substring; preserves indentation (`"    foo()"` → `"    # foo()"`) |
+| `comment-block` | Finds the first line containing `match`; comments it and all subsequent lines with greater indentation; stops at the first non-blank line with equal or lesser indent |
+| `replace-text` | Whole-file string substitution: `content.Replace(find, replace)` |
+
+File I/O uses `[System.IO.File]::ReadAllLines` / `WriteAllLines` with UTF-8 without BOM so Python files are not corrupted.
+
+### State file schema
+
+```json
+{
+  "type": "comfyui-patch-state",
+  "instance": "rocm-stable",
+  "updatedAt": "2026-06-16T00:00:00.0000000-03:00",
+  "patches": [
+    {
+      "id": "001-avoid-comfyui-crashes-dynamic-vram",
+      "version": "1",
+      "appliedAt": "2026-06-16T00:00:00.0000000-03:00",
+      "files": ["comfy/model_management.py"]
+    }
+  ]
+}
+```
+
+### `RocmRoll.ComfyPatch.psm1` function table
+
+| Function | Description |
+| --- | --- |
+| `Get-ComfyPatchList` | Enumerate `source/patches/comfyui/*.json` sorted by name |
+| `Get-ComfyPatchObject` | Load a single patch by ID; throw if not found |
+| `Get-ComfyPatchState` | Read per-instance state; return empty state if missing |
+| `Set-ComfyPatchState` | Write per-instance state atomically |
+| `Test-ComfyPatchApplicable` | Compare patch architectures against instance GPU gfx family |
+| `Invoke-CommentLine` | comment-line operation handler |
+| `Invoke-CommentBlock` | comment-block operation handler |
+| `Invoke-ReplaceText` | replace-text operation handler |
+| `Invoke-PatchFileOperation` | Dispatch to the three handlers |
+| `Invoke-ApplyComfyPatch` | Apply one patch: backup → operations → write state |
+| `Invoke-RemoveComfyPatch` | Roll back one patch: restore backup → update state |
+| `Invoke-ApplyAllComfyPatches` | Apply all patches not already in state; skip inapplicable architectures |
+| `Show-ComfyPatchList` | Without instance: list all available. With instance: show applied status |
+
+### Idempotency
+
+`Invoke-ApplyComfyPatch` checks state before modifying files. If the patch ID is already recorded as applied, it logs info and skips. `Invoke-ApplyAllComfyPatches` is called at the end of every `install` run, so re-running install on an already-patched instance is safe.
+
+### Integration with install
+
+`Invoke-FullInstall` in `RocmRoll.Core` calls `Invoke-ApplyAllComfyPatches` after the performance package profile is installed (the ComfyUI checkout must exist first). Patch failures are non-fatal: they are caught, logged as warnings, and the install continues.
+
+### Patch CLI commands
+
+```powershell
+rocmroll patch list                                  # list all available patches
+rocmroll patch list --instance rocm-stable           # show applied status for an instance
+rocmroll patch apply --instance rocm-stable          # apply all applicable patches
+rocmroll patch apply --instance rocm-stable --patch-id 001-avoid-comfyui-crashes-dynamic-vram
+rocmroll patch remove --instance rocm-stable --patch-id 001-avoid-comfyui-crashes-dynamic-vram
 ```
 
 ## 27. Launchers
