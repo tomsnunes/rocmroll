@@ -199,7 +199,7 @@ function Invoke-FullInstall {
         # Apply ComfyUI source patches (non-fatal: patch failures log warnings and do not abort install)
         Import-Module (Join-Path $modDir 'RocmRoll.ComfyPatch.psm1') -Force -Global
         try {
-            Invoke-ApplyAllComfyPatches -InstanceName $InstanceName
+            Invoke-ApplyAllComfyPatches -InstanceName $InstanceName -GfxOverride $gpu.gfx
         } catch {
             Write-LogWarn "ComfyUI patch pass had errors (install continues): $_" -Comp 'RocmRoll.Core'
         }

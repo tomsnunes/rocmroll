@@ -1069,9 +1069,9 @@ switch ($Command.ToLower()) {
             'apply' {
                 Assert-Param -Value $InstanceName -Flag '--instance' -Command 'patch apply'
                 if ($PatchId) {
-                    Invoke-ApplyComfyPatch -PatchId $PatchId -InstanceName $InstanceName
+                    Invoke-ApplyComfyPatch -PatchId $PatchId -InstanceName $InstanceName -GfxOverride $GfxOverride
                 } else {
-                    Invoke-ApplyAllComfyPatches -InstanceName $InstanceName
+                    Invoke-ApplyAllComfyPatches -InstanceName $InstanceName -GfxOverride $GfxOverride
                 }
             }
             'remove' {

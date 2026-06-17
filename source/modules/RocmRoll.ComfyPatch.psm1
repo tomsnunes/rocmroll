@@ -158,15 +158,22 @@ function Test-ComfyPatchApplicable {
     .SYNOPSIS
         Returns $true if the patch's architectures field matches the instance GPU.
         If architectures is the string "all", always returns $true.
+        GfxOverride lets the caller supply the gfx family directly (used during install
+        before instance state is written) to avoid reading state files that don't exist yet.
     #>
     param(
         [Parameter(Mandatory)][object]$Patch,
-        [Parameter(Mandatory)][string]$InstanceName
+        [Parameter(Mandatory)][string]$InstanceName,
+        [string]$GfxOverride = ''
     )
     Import-ComfyPatchDeps
     $arch = $Patch.architectures
     if ($arch -is [string] -and $arch -eq 'all') {
         return $true
+    }
+
+    if ($GfxOverride) {
+        return (@($arch) -contains $GfxOverride)
     }
 
     $instState = Get-InstanceState -Name $InstanceName
@@ -318,10 +325,14 @@ function Invoke-ApplyComfyPatch {
         Applies a single ComfyUI patch to an instance.
         Backs up each target file before modification.
         Skips if already applied (idempotent). Skips if architecture does not match.
+        Returns $true when the patch was applied, $false when skipped.
+        GfxOverride lets the caller supply the gfx family directly so this function
+        works during install before instance state is written.
     #>
     param(
         [Parameter(Mandatory)][string]$PatchId,
-        [Parameter(Mandatory)][string]$InstanceName
+        [Parameter(Mandatory)][string]$InstanceName,
+        [string]$GfxOverride = ''
     )
     Import-ComfyPatchDeps
 
@@ -329,21 +340,21 @@ function Invoke-ApplyComfyPatch {
     $alreadyApplied = @($patchState.patches) | Where-Object { $_ -and $_.id -eq $PatchId }
     if ($alreadyApplied) {
         Write-LogInfo "Patch '$PatchId' already applied to '$InstanceName' - skipping" -Comp 'RocmRoll.ComfyPatch'
-        return
+        return $false
     }
 
     $patch = Get-ComfyPatchObject -PatchId $PatchId
 
-    if (-not (Test-ComfyPatchApplicable -Patch $patch -InstanceName $InstanceName)) {
+    if (-not (Test-ComfyPatchApplicable -Patch $patch -InstanceName $InstanceName -GfxOverride $GfxOverride)) {
         Write-LogInfo "Patch '$PatchId' is not applicable to '$InstanceName' (architecture mismatch) - skipping" -Comp 'RocmRoll.ComfyPatch'
-        return
+        return $false
     }
 
-    $instState = Get-InstanceState -Name $InstanceName
-    if (-not $instState) {
-        throw "ROCMROLL-CPATCH-003: Instance '$InstanceName' not found"
+    if (-not $script:_ComfyCfg) { Import-ComfyPatchDeps }
+    $instanceFolder = Join-Path $script:_ComfyCfg.InstancesFolder $InstanceName
+    if (-not (Test-Path $instanceFolder)) {
+        throw "ROCMROLL-CPATCH-003: ComfyUI instance folder not found for '$InstanceName': $instanceFolder"
     }
-    $instanceFolder = [string]$instState.path
     $backupRoot     = Join-Path (Get-ComfyPatchStateDir) "$InstanceName\$PatchId"
     if (-not (Test-Path $backupRoot)) {
         New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
@@ -391,6 +402,7 @@ function Invoke-ApplyComfyPatch {
     }
     Set-ComfyPatchState -InstanceName $InstanceName -State $updatedState
     Write-LogSuccess "Patch '$PatchId' applied to '$InstanceName'" -Comp 'RocmRoll.ComfyPatch' -Op 'ApplyPatch' -Inst $InstanceName
+    return $true
 }
 
 function Invoke-RemoveComfyPatch {
@@ -451,8 +463,13 @@ function Invoke-ApplyAllComfyPatches {
         Applies all ComfyUI patches to an instance in file order.
         Skips already-applied patches (idempotent) and architecture-mismatched patches.
         Non-fatal: logs warnings on individual patch failures rather than aborting.
+        GfxOverride lets the caller supply the gfx family directly so arch checks work
+        during install before instance state is written.
     #>
-    param([Parameter(Mandatory)][string]$InstanceName)
+    param(
+        [Parameter(Mandatory)][string]$InstanceName,
+        [string]$GfxOverride = ''
+    )
     Import-ComfyPatchDeps
 
     $patches = Get-ComfyPatchList
@@ -461,16 +478,20 @@ function Invoke-ApplyAllComfyPatches {
         return
     }
 
-    $applied = 0
+    $patched = 0
+    $skipped = 0
     foreach ($patch in $patches) {
         try {
-            Invoke-ApplyComfyPatch -PatchId $patch.id -InstanceName $InstanceName
-            $applied++
+            if (Invoke-ApplyComfyPatch -PatchId $patch.id -InstanceName $InstanceName -GfxOverride $GfxOverride) {
+                $patched++
+            } else {
+                $skipped++
+            }
         } catch {
             Write-LogWarn "Patch '$($patch.id)' failed and was skipped: $_" -Comp 'RocmRoll.ComfyPatch' -Inst $InstanceName
         }
     }
-    Write-LogInfo "ComfyUI patch pass complete ($applied of $($patches.Count) patches processed)" -Comp 'RocmRoll.ComfyPatch' -Inst $InstanceName
+    Write-LogInfo "ComfyUI patch pass complete ($patched applied, $skipped skipped)" -Comp 'RocmRoll.ComfyPatch' -Inst $InstanceName
 }
 
 # ============================================================
