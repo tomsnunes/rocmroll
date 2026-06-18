@@ -103,14 +103,17 @@ rocmroll workspace init --workspace NAME
 
 ## CLI And Modules
 
-`source\rocmroll.ps1` parses command-line arguments, initializes config and logging, imports modules, and dispatches commands.
+`source\rocmroll.ps1` is a thin bootstrapper. It initializes UTF-8 console output, loads the CLI support module, builds a command context, initializes config and logging, and delegates dispatch to command modules.
 
 | Module | Responsibility |
 | --- | --- |
+| `RocmRoll.Cli` | CLI context parsing, help rendering, required option validation, module import order, and top-level dispatch |
+| `RocmRoll.Commands` | Command handler functions for CLI commands and subcommands |
 | `RocmRoll.Config` | Config, path resolution, folder initialization |
 | `RocmRoll.Logging` | Console, file, JSONL, and native-command logging |
 | `RocmRoll.Encoding` | UTF-8 NoBOM text and JSON formatting helpers |
 | `RocmRoll.Utilities` | Shared filesystem and native-process helpers |
+| `RocmRoll.Instance` | Instance listing and removal operations |
 | `RocmRoll.State` | Runtime, environment, instance, and global JSON state |
 | `RocmRoll.Locking` | PID lock files and stale lock handling |
 | `RocmRoll.Download` | Cached downloads and integrity checks |

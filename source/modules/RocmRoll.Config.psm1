@@ -140,7 +140,9 @@ function Initialize-Config {
                     $stateFolder        = Resolve-WorkspacePathOverride $wp 'state'        $stateFolder        $RootFolder
                     $cacheFolder        = Resolve-WorkspacePathOverride $wp 'cache'        $cacheFolder        $RootFolder
                 }
-            } catch { }
+            } catch {
+                Write-Warning "Failed to load workspace override '$wsFilePath': $($_.Exception.Message)"
+            }
         }
     }
 

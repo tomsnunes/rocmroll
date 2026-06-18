@@ -7,14 +7,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-function Get-SafeGitRepositoryArguments {
-    param(
-        [string]$RepositoryPath,
-        [string[]]$Arguments
-    )
-
-    return @('-c', "safe.directory=$RepositoryPath", '-C', $RepositoryPath) + $Arguments
-}
+Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Utilities.psm1')
 
 function Get-CustomNodesManifest {
     Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force -Global

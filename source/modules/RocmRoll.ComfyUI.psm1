@@ -9,15 +9,7 @@ $ErrorActionPreference = 'Stop'
 
 Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Logging.psm1')
 Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Encoding.psm1')
-
-function Get-SafeGitRepositoryArguments {
-    param(
-        [string]$RepositoryPath,
-        [string[]]$Arguments
-    )
-
-    return @('-c', "safe.directory=$RepositoryPath", '-C', $RepositoryPath) + $Arguments
-}
+Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Utilities.psm1')
 
 function Invoke-EnsureGitMirror {
     param([string]$Repo)

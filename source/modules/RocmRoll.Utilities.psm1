@@ -38,6 +38,15 @@ function Invoke-QuietNativeCommand {
     }
 }
 
+function Get-SafeGitRepositoryArguments {
+    param(
+        [string]$RepositoryPath,
+        [string[]]$Arguments
+    )
+
+    return @('-c', "safe.directory=$RepositoryPath", '-C', $RepositoryPath) + $Arguments
+}
+
 function Remove-FolderTree {
     param(
         [string]$Path,
@@ -76,4 +85,5 @@ function Remove-FolderTree {
     }
 }
 
-Export-ModuleMember -Function Test-PathInsideFolder, Invoke-QuietNativeCommand, Remove-FolderTree
+Export-ModuleMember -Function Test-PathInsideFolder, Invoke-QuietNativeCommand,
+    Get-SafeGitRepositoryArguments, Remove-FolderTree
