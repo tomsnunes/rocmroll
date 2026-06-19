@@ -387,7 +387,7 @@ function Export-CurrentAsWorkspace {
     $destPath = Join-Path $wsFolder "$Name.json"
 
     if (Test-Path $destPath) {
-        throw "ROCMROLL-WORKSPACE-005: Workspace '$Name' already exists at '$destPath'. Use 'rocmroll workspace edit --workspace $Name' to modify it."
+        throw "ROCMROLL-WORKSPACE-005: Workspace '$Name' already exists at '$destPath'. Use 'rocmroll workspace edit --name $Name' to modify it."
     }
 
     $paths = [ordered]@{

@@ -66,7 +66,7 @@ function Invoke-InstallCustomNodes {
                 Invoke-LoggedNativeCommand -FilePath 'git' -Arguments (Get-SafeGitRepositoryArguments -RepositoryPath $nodeDir -Arguments @('checkout', $node.ref)) -Comp 'RocmRoll.CustomNodes' -Op 'CheckoutCustomNode' -Inst $InstanceName | Out-Null
                 Invoke-LoggedNativeCommand -FilePath 'git' -Arguments (Get-SafeGitRepositoryArguments -RepositoryPath $nodeDir -Arguments @('pull')) -Comp 'RocmRoll.CustomNodes' -Op 'PullCustomNode' -Inst $InstanceName | Out-Null
             } else {
-                Write-LogDebug "Custom node '$($node.name)' exists. Use 'rocmroll comfy update-nodes' to refresh." -Comp 'RocmRoll.CustomNodes'
+                Write-LogDebug "Custom node '$($node.name)' exists. Use 'rocmroll comfyui nodes --instance INSTANCE --update' to refresh." -Comp 'RocmRoll.CustomNodes'
             }
         }
 
@@ -116,7 +116,7 @@ function Invoke-InstallNodeFromUrl {
 
     $nodeDir = Join-Path $nodesFolder $nodeName
     if (Test-Path $nodeDir) {
-        Write-LogWarn "Custom node '$nodeName' already exists. Use 'rocmroll comfy update-nodes' to update." -Comp 'RocmRoll.CustomNodes' -Inst $InstanceName
+        Write-LogWarn "Custom node '$nodeName' already exists. Use 'rocmroll comfyui nodes --instance $InstanceName --update' to update." -Comp 'RocmRoll.CustomNodes' -Inst $InstanceName
         return
     }
 

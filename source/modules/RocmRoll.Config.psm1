@@ -79,11 +79,19 @@ function Resolve-WorkspacePathOverride {
 function Initialize-Config {
     param(
         [string]$RootFolder    = '',
-        [string]$WorkspaceName = ''
+        [string]$WorkspaceName = '',
+        [switch]$IgnoreActiveWorkspace
     )
 
     if (-not $RootFolder) {
-        $RootFolder = Get-DefaultRootFolder
+        $rootOverride = Get-Variable -Name 'RocmRollConfigRootFolder' -Scope Global -ErrorAction SilentlyContinue
+        $RootFolder = if ($rootOverride -and $rootOverride.Value) { [string]$rootOverride.Value } else { Get-DefaultRootFolder }
+    }
+    if (-not $WorkspaceName -and -not $IgnoreActiveWorkspace) {
+        $workspaceOverride = Get-Variable -Name 'RocmRollConfigWorkspaceOverride' -Scope Global -ErrorAction SilentlyContinue
+        if ($workspaceOverride -and $workspaceOverride.Value) {
+            $WorkspaceName = [string]$workspaceOverride.Value
+        }
     }
 
     # Load optional INI overrides
@@ -111,7 +119,7 @@ function Initialize-Config {
     $activeWorkspaceName = ''
     if ($WorkspaceName) {
         $activeWorkspaceName = $WorkspaceName
-    } elseif ($ini.ContainsKey('active') -and $ini['active'].ContainsKey('workspace')) {
+    } elseif (-not $IgnoreActiveWorkspace -and $ini.ContainsKey('active') -and $ini['active'].ContainsKey('workspace')) {
         $activeWorkspaceName = $ini['active']['workspace']
     }
     if ($activeWorkspaceName) {

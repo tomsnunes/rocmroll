@@ -100,8 +100,12 @@ function Format-RocmRollJson {
     $p  = '  ' * $Depth
     $pi = '  ' * ($Depth + 1)
 
-    $keys = if ($Data -is [System.Collections.IDictionary]) { @($Data.Keys) }
-            else { @($Data.PSObject.Properties.Name) }
+    $keys = [System.Collections.Generic.List[string]]::new()
+    if ($Data -is [System.Collections.IDictionary]) {
+        foreach ($key in $Data.Keys) { $keys.Add([string]$key) }
+    } else {
+        foreach ($property in $Data.PSObject.Properties) { $keys.Add([string]$property.Name) }
+    }
 
     $ln = [System.Collections.Generic.List[string]]::new()
     $ln.Add("${p}{")
@@ -129,7 +133,7 @@ function Format-RocmRollJson {
                 $ln.Add("$pi]$comma")
             }
         } else {
-            $inner = (Format-RocmRollJson -Data $v -Depth ($Depth + 1)) -split "`n"
+            $inner = @((Format-RocmRollJson -Data $v -Depth ($Depth + 1)) -split "`n")
             $ln.Add("$pi`"$ek`": $($inner[0].TrimStart())")
             for ($j = 1; $j -lt $inner.Count - 1; $j++) {
                 $ln.Add($inner[$j])

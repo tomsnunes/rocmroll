@@ -89,8 +89,8 @@ function Get-ComfyPatchObject {
     #>
     param([Parameter(Mandatory)][string]$PatchId)
     Import-ComfyPatchDeps
-    $patches = Get-ComfyPatchList
-    $patch = $patches | Where-Object { $_.id -eq $PatchId } | Select-Object -First 1
+    $patches = @(Get-ComfyPatchList)
+    $patch = $patches | Where-Object { (Get-ComfyPatchEntryId -Entry $_) -eq $PatchId } | Select-Object -First 1
     if (-not $patch) {
         throw "ROCMROLL-CPATCH-001: ComfyUI patch '$PatchId' not found in source/patches/comfyui/"
     }
@@ -147,6 +147,30 @@ function Set-ComfyPatchState {
     $json = $State | ConvertTo-Json -Depth 10
     Write-RocmRollTextFile -Path $tmp -Content $json
     Move-Item -Path $tmp -Destination $path -Force
+}
+
+function Get-ComfyPatchEntryId {
+    param([object]$Entry)
+    if (-not $Entry) { return '' }
+    $prop = $Entry.PSObject.Properties['id']
+    if ($prop -and $prop.Value) { return [string]$prop.Value }
+    return ''
+}
+
+function Get-ComfyPatchStateEntries {
+    param([object]$State)
+    if (-not $State) { return @() }
+    $prop = $State.PSObject.Properties['patches']
+    if (-not $prop -or -not $prop.Value) { return @() }
+
+    $value = $prop.Value
+    if ($value -is [System.Array] -or $value -is [System.Collections.IList]) {
+        return @($value | Where-Object { $_ -and (Get-ComfyPatchEntryId -Entry $_) })
+    }
+    if (Get-ComfyPatchEntryId -Entry $value) {
+        return @($value)
+    }
+    return @()
 }
 
 # ============================================================
@@ -337,7 +361,7 @@ function Invoke-ApplyComfyPatch {
     Import-ComfyPatchDeps
 
     $patchState = Get-ComfyPatchState -InstanceName $InstanceName
-    $alreadyApplied = @($patchState.patches) | Where-Object { $_ -and $_.id -eq $PatchId }
+    $alreadyApplied = @(Get-ComfyPatchStateEntries -State $patchState) | Where-Object { (Get-ComfyPatchEntryId -Entry $_) -eq $PatchId }
     if ($alreadyApplied) {
         Write-LogInfo "Patch '$PatchId' already applied to '$InstanceName' - skipping" -Comp 'RocmRoll.ComfyPatch'
         return $false
@@ -387,7 +411,7 @@ function Invoke-ApplyComfyPatch {
         Write-LogSuccess "  Patched: $relativePath" -Comp 'RocmRoll.ComfyPatch'
     }
 
-    $existingPatches = @($patchState.patches) | Where-Object { $_ }
+    $existingPatches = @(Get-ComfyPatchStateEntries -State $patchState)
     $newEntry = [PSCustomObject]@{
         id        = $PatchId
         version   = [string]$patch.version
@@ -398,7 +422,7 @@ function Invoke-ApplyComfyPatch {
         type      = 'comfyui-patch-state'
         instance  = $InstanceName
         updatedAt = (Get-Date).ToString('yyyy-MM-ddTHH:mm:sszzz')
-        patches   = @($existingPatches) + @($newEntry)
+        patches   = [object[]](@($existingPatches) + @($newEntry))
     }
     Set-ComfyPatchState -InstanceName $InstanceName -State $updatedState
     Write-LogSuccess "Patch '$PatchId' applied to '$InstanceName'" -Comp 'RocmRoll.ComfyPatch' -Op 'ApplyPatch' -Inst $InstanceName
@@ -419,7 +443,8 @@ function Invoke-RemoveComfyPatch {
     Import-ComfyPatchDeps
 
     $patchState   = Get-ComfyPatchState -InstanceName $InstanceName
-    $appliedEntry = @($patchState.patches) | Where-Object { $_ -and $_.id -eq $PatchId } | Select-Object -First 1
+    $stateEntries = @(Get-ComfyPatchStateEntries -State $patchState)
+    $appliedEntry = $stateEntries | Where-Object { (Get-ComfyPatchEntryId -Entry $_) -eq $PatchId } | Select-Object -First 1
     if (-not $appliedEntry) {
         Write-LogWarn "Patch '$PatchId' is not applied to '$InstanceName'" -Comp 'RocmRoll.ComfyPatch'
         return
@@ -427,7 +452,7 @@ function Invoke-RemoveComfyPatch {
 
     $backupRoot = Join-Path (Get-ComfyPatchStateDir) "$InstanceName\$PatchId"
     if (-not (Test-Path $backupRoot)) {
-        throw "ROCMROLL-CPATCH-005: Backup folder not found for '$PatchId' on '$InstanceName'. Cannot restore. Suggested: rocmroll repair --instance $InstanceName --component comfyui"
+        throw "ROCMROLL-CPATCH-005: Backup folder not found for '$PatchId' on '$InstanceName'. Cannot restore. Suggested: rocmroll instance repair --name $InstanceName"
     }
 
     $instState      = Get-InstanceState -Name $InstanceName
@@ -446,12 +471,15 @@ function Invoke-RemoveComfyPatch {
         Write-LogSuccess "  Restored: $relativePath" -Comp 'RocmRoll.ComfyPatch'
     }
 
-    $remainingPatches = @($patchState.patches) | Where-Object { $_ -and $_.id -ne $PatchId }
+    $remainingPatches = $stateEntries | Where-Object {
+        $entryId = Get-ComfyPatchEntryId -Entry $_
+        $_ -and $entryId -and $entryId -ne $PatchId
+    }
     $updatedState = [PSCustomObject]@{
         type      = 'comfyui-patch-state'
         instance  = $InstanceName
         updatedAt = (Get-Date).ToString('yyyy-MM-ddTHH:mm:sszzz')
-        patches   = $remainingPatches
+        patches   = [object[]]@($remainingPatches)
     }
     Set-ComfyPatchState -InstanceName $InstanceName -State $updatedState
     Write-LogSuccess "Patch '$PatchId' removed from '$InstanceName'" -Comp 'RocmRoll.ComfyPatch' -Op 'RemovePatch' -Inst $InstanceName
@@ -472,7 +500,7 @@ function Invoke-ApplyAllComfyPatches {
     )
     Import-ComfyPatchDeps
 
-    $patches = Get-ComfyPatchList
+    $patches = @(Get-ComfyPatchList)
     if (-not $patches -or $patches.Count -eq 0) {
         Write-LogInfo "No ComfyUI patches defined" -Comp 'RocmRoll.ComfyPatch'
         return
@@ -482,13 +510,22 @@ function Invoke-ApplyAllComfyPatches {
     $skipped = 0
     foreach ($patch in $patches) {
         try {
-            if (Invoke-ApplyComfyPatch -PatchId $patch.id -InstanceName $InstanceName -GfxOverride $GfxOverride) {
+            $patchId = Get-ComfyPatchEntryId -Entry $patch
+            if (-not $patchId) {
+                Write-LogWarn 'Skipping malformed ComfyUI patch without id.' -Comp 'RocmRoll.ComfyPatch' -Inst $InstanceName
+                $skipped++
+                continue
+            }
+            if (Invoke-ApplyComfyPatch -PatchId $patchId -InstanceName $InstanceName -GfxOverride $GfxOverride) {
                 $patched++
             } else {
                 $skipped++
             }
         } catch {
-            Write-LogWarn "Patch '$($patch.id)' failed and was skipped: $_" -Comp 'RocmRoll.ComfyPatch' -Inst $InstanceName
+            $patchId = Get-ComfyPatchEntryId -Entry $patch
+            if (-not $patchId) { $patchId = '<unknown>' }
+            $skipped++
+            Write-LogWarn "Patch '$patchId' failed and was skipped: $_" -Comp 'RocmRoll.ComfyPatch' -Inst $InstanceName
         }
     }
     Write-LogInfo "ComfyUI patch pass complete ($patched applied, $skipped skipped)" -Comp 'RocmRoll.ComfyPatch' -Inst $InstanceName
@@ -507,7 +544,7 @@ function Show-ComfyPatchList {
     param([string]$InstanceName = '')
     Import-ComfyPatchDeps
 
-    $patches = Get-ComfyPatchList
+    $patches = @(Get-ComfyPatchList)
     if (-not $patches -or $patches.Count -eq 0) {
         Write-Host "No ComfyUI patches defined in source/patches/comfyui/"
         return
@@ -515,7 +552,7 @@ function Show-ComfyPatchList {
 
     if ($InstanceName) {
         $patchState = Get-ComfyPatchState -InstanceName $InstanceName
-        $appliedIds = @(@($patchState.patches) | Where-Object { $_ } | ForEach-Object { $_.id })
+        $appliedIds = @((Get-ComfyPatchStateEntries -State $patchState) | ForEach-Object { Get-ComfyPatchEntryId -Entry $_ } | Where-Object { $_ })
         Write-Host "ComfyUI patches for instance '$InstanceName':" -ForegroundColor Cyan
         Write-Host ''
         foreach ($p in $patches) {
@@ -549,6 +586,7 @@ function Show-ComfyPatchList {
 Export-ModuleMember -Function `
     Get-ComfyPatchList, Get-ComfyPatchObject, `
     Get-ComfyPatchState, Set-ComfyPatchState, `
+    Get-ComfyPatchEntryId, Get-ComfyPatchStateEntries, `
     Test-ComfyPatchApplicable, `
     Invoke-CommentLine, Invoke-CommentBlock, Invoke-ReplaceText, `
     Invoke-ApplyComfyPatch, Invoke-RemoveComfyPatch, Invoke-ApplyAllComfyPatches, `

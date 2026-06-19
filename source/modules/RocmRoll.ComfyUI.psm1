@@ -72,7 +72,7 @@ function Invoke-CloneComfyUIInstance {
     $checkoutExitCode = Invoke-LoggedNativeCommand -FilePath 'git' -Arguments $checkoutArgs -Comp 'RocmRoll.ComfyUI' -Op 'GitCheckout'
     if ($checkoutExitCode -ne 0) { throw "ROCMROLL-GIT-004: git checkout '$Ref' failed (exit $checkoutExitCode)" }
 
-    $commit = (& git -c "safe.directory=$instanceFolder" -C $instanceFolder rev-parse HEAD 2>$null).Trim()
+    $commit = (& git -c "safe.directory=$instanceFolder" -c core.excludesfile= -C $instanceFolder rev-parse HEAD 2>$null).Trim()
     Write-LogSuccess "ComfyUI instance cloned at $instanceFolder (commit: $commit)" -Comp 'RocmRoll.ComfyUI'
     return @{ path=$instanceFolder; commit=$commit }
 }
@@ -117,6 +117,71 @@ function Invoke-InstallComfyDeps {
         if ($managerPipExitCode -ne 0) { throw "ROCMROLL-COMFY-003: pip install manager_requirements.txt failed (exit $managerPipExitCode)" }
         Write-LogSuccess "ComfyUI manager dependencies installed" -Comp 'RocmRoll.ComfyUI'
     }
+}
+
+function Invoke-UpdateComfyUIInstance {
+    param(
+        [string]$InstanceName,
+        [string]$Ref  = 'master',
+        [string]$Repo = 'https://github.com/Comfy-Org/ComfyUI.git'
+    )
+
+    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force -Global
+    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.State.psm1') -Force -Global
+
+    $cfg = Get-Config
+    $state = Get-InstanceState -Name $InstanceName
+    $instanceFolder = if ($state -and $state.PSObject.Properties['path'] -and $state.path) {
+        [string]$state.path
+    } else {
+        Join-Path $cfg.InstancesFolder $InstanceName
+    }
+
+    if (-not (Test-Path $instanceFolder)) {
+        throw "ROCMROLL-COMFY-004: ComfyUI instance folder not found: $instanceFolder"
+    }
+    if (-not (Test-Path (Join-Path $instanceFolder '.git'))) {
+        throw "ROCMROLL-COMFY-005: ComfyUI folder is not a Git checkout: $instanceFolder"
+    }
+
+    $dirty = (& git -c "safe.directory=$instanceFolder" -c core.excludesfile= -C $instanceFolder status --porcelain 2>$null)
+    if ($LASTEXITCODE -ne 0) {
+        throw "ROCMROLL-GIT-006: git status failed for '$instanceFolder'"
+    }
+    if (@($dirty).Count -gt 0) {
+        throw "ROCMROLL-COMFY-006: ComfyUI checkout has local changes. Commit, stash, or remove them before updating: $instanceFolder"
+    }
+
+    Invoke-EnsureGitMirror -Repo $Repo | Out-Null
+
+    $remoteArgs = Get-SafeGitRepositoryArguments -RepositoryPath $instanceFolder -Arguments @('remote', 'set-url', 'origin', $Repo)
+    $remoteExitCode = Invoke-LoggedNativeCommand -FilePath 'git' -Arguments $remoteArgs -Comp 'RocmRoll.ComfyUI' -Op 'GitRemote' -Inst $InstanceName
+    if ($remoteExitCode -ne 0) {
+        Write-LogWarn "Unable to update ComfyUI origin remote (exit $remoteExitCode)." -Comp 'RocmRoll.ComfyUI'
+    }
+
+    $fetchArgs = Get-SafeGitRepositoryArguments -RepositoryPath $instanceFolder -Arguments @('fetch', 'origin', '--tags', '--prune')
+    $fetchExitCode = Invoke-LoggedNativeCommand -FilePath 'git' -Arguments $fetchArgs -Comp 'RocmRoll.ComfyUI' -Op 'GitFetch' -Inst $InstanceName
+    if ($fetchExitCode -ne 0) { throw "ROCMROLL-GIT-007: git fetch failed (exit $fetchExitCode)" }
+
+    $remoteRef = (& git -c "safe.directory=$instanceFolder" -c core.excludesfile= -C $instanceFolder rev-parse --verify --quiet "origin/$Ref" 2>$null)
+    if ($LASTEXITCODE -eq 0 -and $remoteRef) {
+        $checkoutArgs = Get-SafeGitRepositoryArguments -RepositoryPath $instanceFolder -Arguments @('checkout', $Ref)
+        $checkoutExitCode = Invoke-LoggedNativeCommand -FilePath 'git' -Arguments $checkoutArgs -Comp 'RocmRoll.ComfyUI' -Op 'GitCheckout' -Inst $InstanceName
+        if ($checkoutExitCode -ne 0) { throw "ROCMROLL-GIT-008: git checkout '$Ref' failed (exit $checkoutExitCode)" }
+
+        $pullArgs = Get-SafeGitRepositoryArguments -RepositoryPath $instanceFolder -Arguments @('pull', '--ff-only', 'origin', $Ref)
+        $pullExitCode = Invoke-LoggedNativeCommand -FilePath 'git' -Arguments $pullArgs -Comp 'RocmRoll.ComfyUI' -Op 'GitPull' -Inst $InstanceName
+        if ($pullExitCode -ne 0) { throw "ROCMROLL-GIT-009: git pull --ff-only failed (exit $pullExitCode)" }
+    } else {
+        $checkoutArgs = Get-SafeGitRepositoryArguments -RepositoryPath $instanceFolder -Arguments @('checkout', $Ref)
+        $checkoutExitCode = Invoke-LoggedNativeCommand -FilePath 'git' -Arguments $checkoutArgs -Comp 'RocmRoll.ComfyUI' -Op 'GitCheckout' -Inst $InstanceName
+        if ($checkoutExitCode -ne 0) { throw "ROCMROLL-GIT-010: git checkout '$Ref' failed (exit $checkoutExitCode)" }
+    }
+
+    $commit = (& git -c "safe.directory=$instanceFolder" -c core.excludesfile= -C $instanceFolder rev-parse HEAD 2>$null).Trim()
+    Write-LogSuccess "ComfyUI source updated for '$InstanceName' (commit: $commit)" -Comp 'RocmRoll.ComfyUI'
+    return @{ path=$instanceFolder; commit=$commit; ref=$Ref; repo=$Repo }
 }
 
 function Invoke-GenerateExtraModelPaths {
@@ -205,4 +270,5 @@ function Invoke-LinkSharedWorkflows {
 }
 
 Export-ModuleMember -Function Invoke-EnsureGitMirror, Invoke-CloneComfyUIInstance,
+    Invoke-UpdateComfyUIInstance,
     Invoke-InstallComfyDeps, Invoke-GenerateExtraModelPaths, Invoke-LinkSharedWorkflows

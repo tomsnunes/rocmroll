@@ -49,7 +49,8 @@ function Get-StateFilePath {
         [string]$Type,
         [string]$Name = ''
     )
-    $cfg = & { Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force -PassThru; Get-Config }
+    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force -Global
+    $cfg = Get-Config
     switch ($Type) {
         'runtime'     { return Join-Path $cfg.RuntimeStateFolder "runtime-$Name.json" }
         'environment' { return Join-Path $cfg.EnvStateFolder "environment-$Name.json" }

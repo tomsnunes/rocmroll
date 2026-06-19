@@ -93,10 +93,29 @@ function Invoke-RepairComfyUi {
     param(
         [string]$InstanceName,
         [string]$EnvironmentName,
+        [object]$InstanceState,
         [switch]$SharedWorkflows
     )
 
     Import-Module (Join-Path $PSScriptRoot 'RocmRoll.ComfyUI.psm1') -Force
+    $cfg = Get-Config
+    $instancePath = if ($InstanceState -and $InstanceState.PSObject.Properties['path'] -and $InstanceState.path) {
+        [string]$InstanceState.path
+    } else {
+        Join-Path $cfg.InstancesFolder $InstanceName
+    }
+    if (-not (Test-Path -LiteralPath $instancePath)) {
+        $channel = if ($InstanceState -and $InstanceState.PSObject.Properties['channel'] -and $InstanceState.channel) {
+            [string]$InstanceState.channel
+        } else {
+            'stable'
+        }
+        $channels = Get-Content (Join-Path $cfg.ManifestsFolder 'channels.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+        $channelConfig = $channels.$channel
+        if (-not $channelConfig) { throw "ROCMROLL-REPAIR-002: Unknown channel '$channel' for instance '$InstanceName'." }
+        Invoke-CloneComfyUIInstance -InstanceName $InstanceName -Repo $channelConfig.comfyui.repo `
+            -Ref $channelConfig.comfyui.ref | Out-Null
+    }
     Invoke-InstallComfyDeps -InstanceName $InstanceName -EnvironmentName $EnvironmentName
     Invoke-GenerateExtraModelPaths -InstanceName $InstanceName
     if ($SharedWorkflows) {
@@ -138,6 +157,49 @@ function Invoke-RepairLaunchers {
     Set-EnvironmentInstancePath -EnvironmentName $InstanceState.environment -InstanceName $InstanceName
 }
 
+function Invoke-RepairComfyPatches {
+    param(
+        [string]$InstanceName,
+        [hashtable]$GpuState
+    )
+
+    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.ComfyPatch.psm1') -Force
+    $gfx = if ($GpuState.ContainsKey('gfx') -and $GpuState['gfx']) { [string]$GpuState['gfx'] } else { '' }
+    Invoke-ApplyAllComfyPatches -InstanceName $InstanceName -GfxOverride $gfx
+}
+
+function Update-RocmRollInstanceRepairState {
+    param(
+        [string]$InstanceName,
+        [string]$Component,
+        [hashtable]$Config
+    )
+
+    $stateFile = Join-Path $Config.InstanceStateFolder "instance-$InstanceName.json"
+    $currentState = Read-StateFile -Path $stateFile
+    if (-not $currentState) { return }
+    $stateHash = ConvertTo-StateHashtable -InputObject $currentState
+    $remaining = if ($stateHash.ContainsKey('removedComponents')) { @($stateHash['removedComponents']) } else { @() }
+    $repaired = switch ($Component) {
+        'python-env' { @('environment') }
+        'rocm'       { @('environment','rocm') }
+        'comfyui'    { @('comfyui') }
+        'patches'    { @('patches') }
+        'all'        { @('environment','rocm','comfyui','patches') }
+        default      { @() }
+    }
+    $remaining = @($remaining | Where-Object { $_ -notin $repaired } | Sort-Object -Unique)
+    if ($remaining.Count -eq 0) {
+        $stateHash['status'] = 'ready'
+        if ($stateHash.ContainsKey('removedComponents')) { $stateHash.Remove('removedComponents') }
+    } else {
+        $stateHash['status'] = 'incomplete'
+        $stateHash['removedComponents'] = $remaining
+    }
+    $stateHash['updatedAt'] = (Get-Date).ToString('yyyy-MM-ddTHH:mm:sszzz')
+    Write-StateFile -Path $stateFile -State $stateHash
+}
+
 function Invoke-RepairComponent {
     param(
         [string]$InstanceName,
@@ -161,27 +223,36 @@ function Invoke-RepairComponent {
     $preRepairEnvState = Get-EnvironmentState -Name $state.environment
     $preRepairGpu = ConvertTo-StateHashtable -InputObject $(if ($preRepairEnvState) { $preRepairEnvState.gpu } else { $null })
     $runtimeVersion = Get-RepairRuntimeVersion -EnvironmentState $preRepairEnvState -Config $cfg
+    $preRepairEnvPath = if ($preRepairEnvState -and $preRepairEnvState.PSObject.Properties['path']) { [string]$preRepairEnvState.path } else { '' }
 
     switch ($Component) {
         'python-runtime' { Invoke-RepairPythonRuntime -RuntimeVersion $runtimeVersion }
         'python-env'     { Invoke-RepairPythonEnvironment -EnvironmentName $state.environment -RuntimeVersion $runtimeVersion -InstanceName $InstanceName }
-        'rocm'           { Invoke-RepairRocmPackages -InstanceName $InstanceName -InstanceState $state -RuntimeVersion $runtimeVersion -PreRepairGpu $preRepairGpu }
-        'comfyui'        { Invoke-RepairComfyUi -InstanceName $InstanceName -EnvironmentName $state.environment -SharedWorkflows:$SharedWorkflows }
+        'rocm'           {
+            if (-not $preRepairEnvPath -or -not (Test-Path -LiteralPath $preRepairEnvPath)) {
+                Invoke-RepairPythonEnvironment -EnvironmentName $state.environment -RuntimeVersion $runtimeVersion -InstanceName $InstanceName
+            }
+            Invoke-RepairRocmPackages -InstanceName $InstanceName -InstanceState $state -RuntimeVersion $runtimeVersion -PreRepairGpu $preRepairGpu
+        }
+        'comfyui'        { Invoke-RepairComfyUi -InstanceName $InstanceName -EnvironmentName $state.environment -InstanceState $state -SharedWorkflows:$SharedWorkflows }
         'custom-nodes'   { Invoke-RepairCustomNodes -InstanceName $InstanceName -EnvironmentName $state.environment }
         'launchers'      { Invoke-RepairLaunchers -InstanceName $InstanceName -InstanceState $state -ProfileName $ProfileName }
-        'patches'        { Write-LogInfo "Re-applying patches (not yet automated)" -Comp 'RocmRoll.Repair' }
+        'patches'        { Invoke-RepairComfyPatches -InstanceName $InstanceName -GpuState $preRepairGpu }
         'all' {
             Invoke-RepairPythonEnvironment -EnvironmentName $state.environment -RuntimeVersion $runtimeVersion -InstanceName $InstanceName
             Invoke-RepairRocmPackages -InstanceName $InstanceName -InstanceState $state -RuntimeVersion $runtimeVersion -PreRepairGpu $preRepairGpu
-            Invoke-RepairComfyUi -InstanceName $InstanceName -EnvironmentName $state.environment -SharedWorkflows:$SharedWorkflows
+            Invoke-RepairComfyUi -InstanceName $InstanceName -EnvironmentName $state.environment -InstanceState $state -SharedWorkflows:$SharedWorkflows
             Invoke-RepairCustomNodes -InstanceName $InstanceName -EnvironmentName $state.environment
             Invoke-RepairLaunchers -InstanceName $InstanceName -InstanceState $state -ProfileName $ProfileName
+            Invoke-RepairComfyPatches -InstanceName $InstanceName -GpuState $preRepairGpu
         }
     }
 
     if ($RollbackPatch) {
         Invoke-RollbackPatch -InstanceName $InstanceName -PatchId $RollbackPatch
     }
+
+    Update-RocmRollInstanceRepairState -InstanceName $InstanceName -Component $Component -Config $cfg
 
     Write-LogSuccess "Repair complete for '$InstanceName' component: $Component" -Comp 'RocmRoll.Repair'
 }
