@@ -529,8 +529,8 @@ function Restore-RocmRollGitFiles {
     )
 
     if ($Paths.Count -eq 0) { return }
-    $args = (Get-SafeGitRepositoryArguments -RepositoryPath $RepositoryPath -Arguments @('checkout', '--')) + $Paths
-    $exitCode = Invoke-LoggedNativeCommand -FilePath 'git' -Arguments $args -Comp 'RocmRoll.Commands' -Op 'GitRestore'
+    $gitArguments = (Get-SafeGitRepositoryArguments -RepositoryPath $RepositoryPath -Arguments @('checkout', '--')) + $Paths
+    $exitCode = Invoke-LoggedNativeCommand -FilePath 'git' -Arguments $gitArguments -Comp 'RocmRoll.Commands' -Op 'GitRestore'
     if ($exitCode -ne 0) {
         throw "ROCMROLL-GIT-012: git checkout failed while restoring managed patch files (exit $exitCode)"
     }
