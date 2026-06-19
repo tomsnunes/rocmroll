@@ -4,6 +4,7 @@
 # AI
 .ai
 .claude
+.agents
 
 # Dev
 .dev
@@ -33,9 +34,6 @@ python_env/
 
 # UV
 uv.lock
-
-# State
-/.state/
 
 # Shared Models
 /shared/input/
@@ -70,6 +68,15 @@ uv.lock
 # Logs
 /logs/
 *.log
+
+# State
+/.state/
+
+# Tests
+/tests/
+
+# Workspace
+/workspaces/
 
 # Examples
 /examples/
