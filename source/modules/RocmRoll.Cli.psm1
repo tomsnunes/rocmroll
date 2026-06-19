@@ -295,7 +295,7 @@ function Add-CliPresentOption {
     }
 }
 
-function Parse-CliOptions {
+function ConvertFrom-CliOptions {
     param(
         [string[]]$ArgList,
         [object[]]$Options
@@ -390,7 +390,7 @@ function New-CliContext {
 
     if ($rootCommand -eq 'help') {
         $helpTarget = ($RemainingArgs | Where-Object { $_ -notlike '--*' }) -join ' '
-        $parsed = Parse-CliOptions -ArgList @($RemainingArgs | Where-Object { $_ -like '--*' }) -Options @(Get-RocmRollGlobalOptionDefinitions)
+        $parsed = ConvertFrom-CliOptions -ArgList @($RemainingArgs | Where-Object { $_ -like '--*' }) -Options @(Get-RocmRollGlobalOptionDefinitions)
         $parsedOptions = $parsed.Options
         $parseErrors += $parsed.Errors
         $handler = 'Invoke-RocmRollHelpCommand'
@@ -428,7 +428,7 @@ function New-CliContext {
         }
 
         $options = Get-CliCombinedOptions -Definition $definition -SubDefinition $subDefinition
-        $parsed = Parse-CliOptions -ArgList $argsToParse -Options $options
+        $parsed = ConvertFrom-CliOptions -ArgList $argsToParse -Options $options
         $parsedOptions = $parsed.Options
         $parseErrors += $parsed.Errors
         if ($parsed.Positionals.Count -gt 0) {
