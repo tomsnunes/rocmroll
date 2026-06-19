@@ -33,7 +33,7 @@ Thank you for your interest in contributing. ROCmRoll is a spec-driven project â
 
 Use the [bug report template](.github/ISSUE_TEMPLATE/bug_report.md). Always include:
 
-1. Output of `.\rocmroll.bat doctor --instance <name> --json`
+1. Output of `.\rocmroll.bat doctor --name <name> --json`
 2. The install log from `logs\install\`
 3. Your GPU model and GFX family
 4. The channel you are using (stable/nightly)

@@ -33,7 +33,7 @@ Implemented areas include:
 - Generated launchers under `launchers\`
 - Shared asset folders
 - ROCm/PyTorch validation via `source\scripts\validate-rocm.py`
-- `doctor`, `repair`, `list`, `remove`, `cache`, `logs`, `config`, `profile`, `patch`, and `workspace` commands
+- Registry-driven `instance`, `doctor`, `env`, `rocm`, `comfyui`, `cache`, `state`, `logs`, `config`, `profile`, `patch`, and `workspace` command families
 - JSON state files, human logs, JSONL logs, and PID lock files
 - Optional ComfyUI Desktop registration
 - User configuration through `rocmroll.ini`
@@ -85,13 +85,13 @@ Check the host system:
 Create a stable ComfyUI instance:
 
 ```powershell
-.\rocmroll.bat install --instance rocm-stable --channel stable
+.\rocmroll.bat instance install --name rocm-stable --channel stable
 ```
 
 Launch it:
 
 ```powershell
-.\rocmroll.bat launch --instance rocm-stable
+.\rocmroll.bat instance launch --name rocm-stable
 ```
 
 The generated launcher starts ComfyUI on:
@@ -103,10 +103,10 @@ http://127.0.0.1:8188
 Use a different port at launch time:
 
 ```powershell
-.\rocmroll.bat launch --instance rocm-stable --port 8189
+.\rocmroll.bat instance launch --name rocm-stable --port 8189
 ```
 
-If more than one ready instance exists, `launch` can run without `--instance` and ROCmRoll will show an interactive selector:
+If more than one ready instance exists, `instance launch` can run without `--name` and ROCmRoll will show an interactive selector:
 
 ```powershell
 .\rocmroll.bat launch
@@ -148,8 +148,8 @@ When `--channel stable` is selected and ROCmRoll detects RDNA 1 or RDNA 2, it au
 You can also select them explicitly:
 
 ```powershell
-.\rocmroll.bat install --instance my-rdna1 --channel rdna1
-.\rocmroll.bat install --instance my-rdna2 --channel rdna2
+.\rocmroll.bat instance install --name my-rdna1 --channel rdna1
+.\rocmroll.bat instance install --name my-rdna2 --channel rdna2
 ```
 
 ## Profiles
@@ -170,27 +170,27 @@ Profile commands:
 
 ```powershell
 .\rocmroll.bat profile list
-.\rocmroll.bat profile show --profile optimized
-.\rocmroll.bat profile create --profile my-profile
-.\rocmroll.bat profile remove --profile my-profile
+.\rocmroll.bat profile show --name optimized
+.\rocmroll.bat profile create --name my-profile
+.\rocmroll.bat profile remove --name my-profile
 ```
 
 Use a profile at install time:
 
 ```powershell
-.\rocmroll.bat install --instance rocm-stable --profile stable-dynamic-vram
+.\rocmroll.bat instance install --name rocm-stable --profile stable-dynamic-vram
 ```
 
 Override a profile at launch time:
 
 ```powershell
-.\rocmroll.bat launch --instance rocm-stable --profile performance-autotune
+.\rocmroll.bat instance launch --name rocm-stable --profile performance-autotune
 ```
 
 Regenerate launchers with a different default profile:
 
 ```powershell
-.\rocmroll.bat repair --instance rocm-stable --component launchers --profile optimized
+.\rocmroll.bat instance repair --name rocm-stable
 ```
 
 Profile JSON shape:
@@ -240,7 +240,7 @@ GPU mapping lives in `source\manifests\rocm-architectures.json`.
 Manual override example:
 
 ```powershell
-.\rocmroll.bat install --instance rocm-stable --gfx gfx120X
+.\rocmroll.bat instance install --name rocm-stable --gfx gfx120X
 ```
 
 ## What Install Does
@@ -248,7 +248,7 @@ Manual override example:
 The full install command:
 
 ```powershell
-.\rocmroll.bat install --instance rocm-stable --channel stable
+.\rocmroll.bat instance install --name rocm-stable --channel stable
 ```
 
 performs this high-level flow:
@@ -364,24 +364,26 @@ Path precedence:
 3. `[paths]` in `rocmroll.ini`
 4. Built-in defaults
 
+`instance list --all` is the exception used for inventory: it resolves the base `[paths]` configuration without the active workspace, then resolves every named workspace once. `--all` and `--workspace` cannot be combined.
+
 Use a workspace for one command without changing the active workspace:
 
 ```powershell
-.\rocmroll.bat install --instance rocm-stable --workspace staging
+.\rocmroll.bat instance install --name rocm-stable --workspace staging
 .\rocmroll.bat doctor --instance rocm-stable --workspace production
-.\rocmroll.bat launch --instance rocm-stable --workspace staging
+.\rocmroll.bat instance launch --name rocm-stable --workspace staging
 ```
 
 Workspace commands:
 
 ```powershell
 .\rocmroll.bat workspace list
-.\rocmroll.bat workspace show --workspace staging
-.\rocmroll.bat workspace create --workspace staging
-.\rocmroll.bat workspace use --workspace staging
-.\rocmroll.bat workspace edit --workspace staging
-.\rocmroll.bat workspace remove --workspace staging
-.\rocmroll.bat workspace init --workspace staging
+.\rocmroll.bat workspace show --name staging
+.\rocmroll.bat workspace create --name staging
+.\rocmroll.bat workspace use --name staging
+.\rocmroll.bat workspace edit --name staging
+.\rocmroll.bat workspace remove --name staging
+.\rocmroll.bat workspace init --name staging
 ```
 
 ## Command Reference
@@ -390,8 +392,8 @@ Get help:
 
 ```powershell
 .\rocmroll.bat help
-.\rocmroll.bat help install
-.\rocmroll.bat install --help
+.\rocmroll.bat help instance install
+.\rocmroll.bat instance install --help
 .\rocmroll.bat help options
 ```
 
@@ -399,13 +401,13 @@ Common commands:
 
 | Command | Purpose |
 | --- | --- |
-| `install` | Full install: runtime, environment, ROCm/PyTorch, ComfyUI, custom nodes, packages, launchers |
-| `launch` | Launch a ready instance |
-| `update` | Re-run full install for an existing instance with `--force` |
+| `instance install` | Full install: runtime, environment, ROCm/PyTorch, ComfyUI, custom nodes, packages, launchers |
+| `instance launch` | Launch a ready instance |
+| `instance update` | Refresh all components, or selected environment, ROCm, and ComfyUI components |
 | `doctor` | Run diagnostics and health checks |
-| `repair` | Repair a scoped component |
-| `list` | List installed instances |
-| `remove` | Remove an instance and its Python environment |
+| `instance repair` | Repair all components or an explicit component scope, including managed patches |
+| `instance list` | List installed instances in one workspace or all workspaces |
+| `instance remove` | Remove a complete instance or an explicit component scope |
 | `cache` | Inspect, verify, clean, or prune caches |
 
 Advanced commands:
@@ -415,12 +417,10 @@ Advanced commands:
 | `init` | Initialize folder structure |
 | `rocm info` | Show ROCm/PyTorch and GPU info for an instance |
 | `rocm validate` | Run ROCm/PyTorch validation for an instance |
-| `comfy info` | Show ComfyUI and custom node info |
-| `comfy requirements` | Reinstall ComfyUI requirements |
-| `comfy nodes` | List installed custom nodes |
-| `comfy update-nodes` | Pull latest commits for custom nodes |
-| `comfy add-node` | Install a custom node from a Git URL |
-| `comfy node-requirements` | Reinstall custom node requirements |
+| `comfyui info` | Show ComfyUI and custom node info |
+| `comfyui requirements` | Reinstall ComfyUI requirements |
+| `comfyui nodes` | List, install, update, or add custom nodes |
+| `comfyui update` | Update the ComfyUI source checkout and optionally reapply patches |
 | `config` | Show or create `rocmroll.ini` |
 | `profile` | Manage execution profiles |
 | `patch` | List, apply, or remove ComfyUI source patches |
@@ -428,49 +428,50 @@ Advanced commands:
 | `logs` | Show recent log files |
 | `help` | Show command help |
 
-Global options:
+Global options accepted by every command:
 
 | Option | Meaning |
 | --- | --- |
-| `--instance NAME` | Target instance |
-| `--workspace NAME` | Use workspace paths for one command |
-| `--channel stable\|preview\|nightly\|rdna1\|rdna2` | Update channel |
-| `--python VERSION` | Python version, default `3.12.10` |
-| `--port PORT` | ComfyUI launch port, default `8188` |
-| `--gfx ARCH` | Override GPU architecture family |
-| `--component SCOPE` | Repair scope |
-| `--env NAME` | Explicit environment name for lower-level commands |
-| `--url URL` | Git URL for `comfy add-node` |
-| `--older-than-days N` | Cache prune age |
-| `--profile NAME` | Execution profile |
-| `--patch-id ID` | ComfyUI patch ID |
-| `--rollback-patch ID` | Package patch rollback ID via `repair` |
-| `--shared-workflows` | Link instance workflows to `shared\workflows` |
-| `--force` | Force overwrite or stale lock override |
 | `--quiet` | Suppress non-error output |
 | `--verbose` / `--debug` | Show more native command output |
 | `--json` | Emit structured JSON where supported |
 | `--no-color` | Disable colored console output |
+| `--log-level LEVEL` | Set the logging threshold |
 | `--log-file PATH` | Write a log file |
 | `--help` | Show help |
+
+Common command-specific options:
+
+| Option | Used by |
+| --- | --- |
+| `--workspace NAME` | Commands whose help explicitly lists workspace selection |
+| `--channel stable\|preview\|nightly\|rdna1\|rdna2` | Instance install and list filtering |
+| `--python VERSION` | Instance install; default `3.12.10` |
+| `--name NAME` | Instance aggregate commands and workspace, environment, or profile commands |
+| `--instance NAME` | Doctor, ROCm, ComfyUI, `profile apply`, and patch commands |
+| `--environment`, `--rocm`, `--comfyui`, `--patches`, `--all` | Component scopes listed by instance info/update/repair/remove help |
+| `--profile NAME` | Instance install and launch |
+| `--force` | Forced install/update/removal or stale install-lock override where listed |
+| `--gfx ARCH`, `--port PORT`, `--url HOST`, `--patch-id ID`, `--shared-workflows` | Specialized commands shown in command help |
 
 ## Examples
 
 ```powershell
 # Create instances
-.\rocmroll.bat install --instance rocm-stable
-.\rocmroll.bat install --instance rocm-preview --channel preview
-.\rocmroll.bat install --instance rocm-nightly --channel nightly
+.\rocmroll.bat instance install --name rocm-stable
+.\rocmroll.bat instance install --name rocm-preview --channel preview
+.\rocmroll.bat instance install --name rocm-nightly --channel nightly
 
 # Launch
-.\rocmroll.bat launch --instance rocm-stable
-.\rocmroll.bat launch --instance rocm-stable --port 8189
-.\rocmroll.bat launch --instance rocm-stable --profile performance-autotune
+.\rocmroll.bat instance launch --name rocm-stable
+.\rocmroll.bat instance launch --name rocm-stable --port 8189
+.\rocmroll.bat instance launch --name rocm-stable --profile performance-autotune
 
 # Update and repair
-.\rocmroll.bat update --instance rocm-stable
-.\rocmroll.bat repair --instance rocm-stable --component rocm
-.\rocmroll.bat repair --instance rocm-stable --component launchers
+.\rocmroll.bat instance update --name rocm-stable
+.\rocmroll.bat instance update --name rocm-stable --comfyui
+.\rocmroll.bat instance update --name rocm-stable --force
+.\rocmroll.bat instance repair --name rocm-stable --patches
 
 # Diagnostics
 .\rocmroll.bat doctor --system
@@ -479,13 +480,18 @@ Global options:
 .\rocmroll.bat doctor --instance rocm-stable --json
 
 # Custom nodes
-.\rocmroll.bat comfy nodes --instance rocm-stable
-.\rocmroll.bat comfy update-nodes --instance rocm-stable
+.\rocmroll.bat comfyui nodes --instance rocm-stable
+.\rocmroll.bat comfyui nodes --instance rocm-stable --update
+.\rocmroll.bat comfyui nodes --instance rocm-stable --add https://github.com/user/ComfyUI-Node.git
 
 # Remove
-.\rocmroll.bat remove --instance rocm-stable
-.\rocmroll.bat remove --instance rocm-stable --force
+.\rocmroll.bat instance remove --name rocm-stable --patches
+.\rocmroll.bat instance remove --name rocm-stable --environment
+.\rocmroll.bat instance remove --name rocm-stable --all
+.\rocmroll.bat instance remove --name rocm-stable --all --force
 ```
+
+With no component flags, `instance info`, `instance update`, and `instance repair` default to all supported scopes. `instance remove` always requires an explicit scope. Partial removal preserves the instance state as `incomplete` so it can be repaired; successful repair clears the restored component markers and returns the instance to `ready` when none remain. Removing patches restores their backed-up source files before deleting patch metadata. `instance remove --all` removes the checkout, environment, launchers, instance/environment state, patch artifacts, and ComfyUI Desktop registration while preserving shared assets.
 
 ## Runtime And ROCm
 
@@ -568,8 +574,8 @@ The launcher:
 `--user-directory` is intentionally omitted because of a known ComfyUI database initialization issue. Use `--shared-workflows` to link workflows across instances:
 
 ```powershell
-.\rocmroll.bat install --instance rocm-stable --shared-workflows
-.\rocmroll.bat repair --instance rocm-stable --component comfyui --shared-workflows
+.\rocmroll.bat instance install --name rocm-stable
+.\rocmroll.bat instance repair --name rocm-stable
 ```
 
 Creating symbolic links on Windows requires Developer Mode or an elevated PowerShell session.
@@ -596,10 +602,10 @@ logs\install\<yyyy-mm-dd>_<instance>_install.jsonl
 Show recent logs:
 
 ```powershell
-.\rocmroll.bat logs
+.\rocmroll.bat logs show
 ```
 
-Mutating instance work uses locks under `.state\locks\`. Stale locks can be overridden with `--force`.
+The full install/update pipeline uses an instance lock under `.state\locks\`. `--force` can override a stale install lock and requests forced recreation during full install/update.
 
 Cache commands:
 
@@ -622,7 +628,7 @@ The Desktop integration:
 - Does nothing when ComfyUI Desktop is absent
 - Writes atomically
 - Reuses an existing Desktop ID on update
-- Removes the Desktop entry during `rocmroll remove`
+- Removes the Desktop entry during full removal and when ComfyUI or environment components are removed
 - Stores the Desktop ID in instance state as `comfyDesktopId`
 
 ## Troubleshooting

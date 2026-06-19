@@ -89,31 +89,40 @@ Workspaces are named JSON files in `workspaces\` that hold path overrides. Path 
 3. `[paths]` in `rocmroll.ini`
 4. Built-in defaults
 
+For cross-workspace inventory, `Initialize-Config -IgnoreActiveWorkspace` resolves the base `[paths]` configuration without applying `[active]`. `instance list --all` lists that base configuration first and then initializes each named workspace exactly once; a transient `--workspace` selection and `--all` are mutually exclusive.
+
 Workspace commands are implemented by `RocmRoll.Workspace` and dispatched by `source\rocmroll.ps1`:
 
 ```powershell
 rocmroll workspace list
-rocmroll workspace show --workspace NAME
-rocmroll workspace create --workspace NAME
-rocmroll workspace use --workspace NAME
-rocmroll workspace edit --workspace NAME
-rocmroll workspace remove --workspace NAME [--force]
-rocmroll workspace init --workspace NAME
+rocmroll workspace show --name NAME
+rocmroll workspace create --name NAME
+rocmroll workspace use --name NAME
+rocmroll workspace edit --name NAME
+rocmroll workspace remove --name NAME
+rocmroll workspace init --name NAME
 ```
 
 ## CLI And Modules
 
 `source\rocmroll.ps1` is a thin bootstrapper. It initializes UTF-8 console output, loads the CLI support module, builds a command context, initializes config and logging, and delegates dispatch to command modules.
 
+The command path is registry-driven:
+
+1. `RocmRoll.Cli` defines commands, subcommands, options, defaults, required values, help, and handler names in one registry.
+2. The parser validates the invocation and creates a normalized context. Handlers do not repeat required-option validation.
+3. `RocmRoll.Commands` dispatches the context and lazily imports only the domain modules needed by that command family. Imports are cached for the process and are not force-reloaded per handler.
+4. Domain modules perform configuration, state, installation, repair, removal, and other platform operations.
+
 | Module | Responsibility |
 | --- | --- |
-| `RocmRoll.Cli` | CLI context parsing, help rendering, required option validation, module import order, and top-level dispatch |
-| `RocmRoll.Commands` | Command handler functions for CLI commands and subcommands |
+| `RocmRoll.Cli` | Command registry, context parsing, help rendering, option validation, bootstrap initialization, and top-level dispatch |
+| `RocmRoll.Commands` | Thin command handlers, command-family dispatch, and cached domain-module loading |
 | `RocmRoll.Config` | Config, path resolution, folder initialization |
 | `RocmRoll.Logging` | Console, file, JSONL, and native-command logging |
 | `RocmRoll.Encoding` | UTF-8 NoBOM text and JSON formatting helpers |
 | `RocmRoll.Utilities` | Shared filesystem and native-process helpers |
-| `RocmRoll.Instance` | Instance listing and removal operations |
+| `RocmRoll.Instance` | Instance discovery plus complete and component-scoped cleanup lifecycle |
 | `RocmRoll.State` | Runtime, environment, instance, and global JSON state |
 | `RocmRoll.Locking` | PID lock files and stale lock handling |
 | `RocmRoll.Download` | Cached downloads and integrity checks |
@@ -139,21 +148,18 @@ Implemented CLI commands:
 
 ```text
 init
-install
-launch
-update
+instance
+workspace
 doctor
-repair
-list
-remove
-cache
-logs
+env
 rocm
-comfy
+comfyui
+cache
+state
+logs
 config
 profile
 patch
-workspace
 help
 ```
 
@@ -325,9 +331,10 @@ Profile commands:
 
 ```powershell
 rocmroll profile list
-rocmroll profile show --profile optimized
-rocmroll profile create --profile my-profile
-rocmroll profile remove --profile my-profile [--force]
+rocmroll profile apply --instance rocm-stable
+rocmroll profile show --name optimized
+rocmroll profile create --name my-profile
+rocmroll profile remove --name my-profile
 ```
 
 Built-in profile files currently include:
@@ -358,7 +365,7 @@ Fixed launch behavior includes:
 - Shared input, output, and temp directories
 - Launch logs under `logs\launch`
 
-`rocmroll launch --profile NAME` passes the override through to the generated launcher. Old launchers that do not support profile arguments are rejected with a repair hint.
+`rocmroll instance launch --profile NAME` passes the override through to the generated launcher. Old launchers that do not support profile arguments are rejected with a repair hint.
 
 ## State, Logs, Locks, And Cache
 
@@ -381,7 +388,7 @@ logs\install\<yyyy-mm-dd>_<instance>_install.jsonl
 logs\launch\<yyyy-mm-dd>_<instance>_launch.log
 ```
 
-Mutating instance commands use lock files with PID, timestamp, and host data. Locks older than the stale threshold, or owned by a dead process, can be overridden with `--force`.
+The full install/update pipeline uses an instance lock containing PID, timestamp, and host data. A lock older than the stale threshold, or owned by a dead process, can be overridden with `--force`. Component repair/removal commands currently rely on their own guarded filesystem operations rather than the instance lock.
 
 Cache folders are rooted at `.cache` by default:
 
@@ -416,6 +423,16 @@ patches
 all
 ```
 
-Repair does not delete shared models, input, output, temp, workflows, or user data.
+Repair does not delete shared models, input, output, temp, workflows, or user data. Patch repair calls the managed ComfyUI patch application path and is idempotent for already-applied patches.
 
-`RocmRoll.ComfyDesktop` registers installed instances in `%APPDATA%\Comfy Desktop\installations.json` when ComfyUI Desktop is present. It is a no-op when Desktop is absent, updates atomically, reuses existing Desktop IDs, and removes the Desktop entry during `rocmroll remove`.
+## Instance Removal Lifecycle
+
+`RocmRoll.Instance` centralizes launcher, patch-artifact, Desktop-registration, state, environment, and checkout cleanup. Paths recorded in instance and environment state take precedence over conventional folder names, while `Remove-FolderTree` still enforces that recursive deletion remains inside the configured parent folder.
+
+- `instance remove --all` removes the checkout, environment, launchers, instance/environment state, patch state/backups, and Desktop registration.
+- Component removal restores managed patch backups before deleting patch metadata when `--patches` is selected without `--comfyui`.
+- Removing ComfyUI, the environment, or ROCm unregisters the Desktop entry and preserves instance state with status `incomplete` plus `removedComponents`. Repair clears only the markers for components it restored and changes the instance back to `ready` once no markers remain.
+- Patch-only removal does not make an otherwise ready instance incomplete.
+- Shared models, input, output, temp, workflows, user data, runtimes, and caches are outside instance removal scope.
+
+`RocmRoll.ComfyDesktop` registers installed instances in `%APPDATA%\Comfy Desktop\installations.json` when ComfyUI Desktop is present. It is a no-op when Desktop is absent, updates atomically, reuses existing Desktop IDs, and removes the Desktop entry during full removal or removal of ComfyUI/environment components.
