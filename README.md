@@ -63,11 +63,7 @@ Unsupported by design:
 
 ## Quick Start
 
-Run commands from the repository root:
-
-```powershell
-cd C:\Platform\ai
-```
+Run commands from the repository root.
 
 Initialize the folder layout:
 
