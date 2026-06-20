@@ -1,0 +1,19 @@
+{
+  "id": "001-avoid-comfyui-crashes-dynamic-vram",
+  "version": "1",
+  "title": "Avoid ComfyUI crashes when using Dynamic VRAM",
+  "description": "Comments out STREAM_AIMDO_CAST_BUFFERS.clear() to prevent Access Violation (0x00000000000000E0) when using Dynamic VRAM with comfy-aimdo after multiple workflow runs.",
+  "issue": "https://github.com/ROCm/rocm-systems/issues/6191",
+  "architectures": "all",
+  "files": [
+    {
+      "path": "comfy/model_management.py",
+      "operations": [
+        {
+          "type": "comment-line",
+          "match": "STREAM_AIMDO_CAST_BUFFERS.clear()"
+        }
+      ]
+    }
+  ]
+}

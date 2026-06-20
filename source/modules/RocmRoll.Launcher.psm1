@@ -128,13 +128,13 @@ function Invoke-LaunchInstance {
     if ($state.status -ne 'ready') { throw "ROCMROLL-LAUNCH-002: Instance '$InstanceName' is not in ready state (status: $($state.status))." }
 
     $launchScript = Join-Path $cfg.LaunchersFolder "$InstanceName.ps1"
-    if (-not (Test-Path $launchScript)) { throw "ROCMROLL-LAUNCH-003: $InstanceName.ps1 not found in launchers folder. Run 'rocmroll repair --component launchers'." }
+    if (-not (Test-Path $launchScript)) { throw "ROCMROLL-LAUNCH-003: $InstanceName.ps1 not found in launchers folder. Run 'rocmroll instance repair --name $InstanceName'." }
 
     $passArgs = $ExtraArgs
 
     $launcherContent = Get-Content $launchScript -Raw -ErrorAction SilentlyContinue
     if ($ProfileOverride -and ($launcherContent -notmatch 'ProfileArg')) {
-        throw "ROCMROLL-LAUNCH-004: Launcher '$InstanceName.ps1' was generated before profile support was added and cannot accept a --profile override. Regenerate it first:`n`n  rocmroll repair --instance $InstanceName --component launchers`n"
+        throw "ROCMROLL-LAUNCH-004: Launcher '$InstanceName.ps1' was generated before profile support was added and cannot accept a --profile override. Regenerate it first:`n`n  rocmroll instance repair --name $InstanceName`n"
     }
 
     Write-LogInfo "Launching instance '$InstanceName'" -Comp 'RocmRoll.Launcher' -Inst $InstanceName

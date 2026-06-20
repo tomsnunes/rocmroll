@@ -24,7 +24,7 @@ function Invoke-CreateEnvironment {
 
     $runtimeFolder = Join-Path $cfg.RuntimesFolder "python-$RuntimeVersion"
     if (-not (Test-Path (Join-Path $runtimeFolder 'python.exe'))) {
-        throw "ROCMROLL-ENV-001: Runtime python-$RuntimeVersion not found. Run 'rocmroll create-runtime' first."
+        throw "ROCMROLL-ENV-001: Runtime python-$RuntimeVersion not found. Run 'rocmroll env create --name $Name' or 'rocmroll instance install --name NAME' to create it."
     }
 
     if (-not $Force -and (Test-Path $pythonExe)) {

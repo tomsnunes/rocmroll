@@ -37,7 +37,7 @@ No. ROCmRoll is an independent community project. It is not affiliated with AMD,
 If your card is not listed, check `source\manifests\rocm-architectures.json` — it may be under a supported GFX family. You can also use a manual override:
 
 ```powershell
-.\rocmroll.bat install --instance my-instance --gfx gfx120X
+.\rocmroll.bat instance install --name my-instance --gfx gfx120X
 ```
 
 ### Can I use ROCmRoll with an NVIDIA or Intel GPU?
@@ -94,7 +94,7 @@ Use stable for day-to-day work. Use nightly if you want the latest features and 
 ### How do I update an instance?
 
 ```powershell
-.\rocmroll.bat update --instance rocm-stable
+.\rocmroll.bat instance update --name rocm-stable
 ```
 
 This re-runs the full install with `--force`, pulling the latest packages defined by the channel manifest.
@@ -102,7 +102,7 @@ This re-runs the full install with `--force`, pulling the latest packages define
 ### How do I update only the custom nodes?
 
 ```powershell
-.\rocmroll.bat install-nodes --instance rocm-stable --update
+.\rocmroll.bat comfyui nodes --instance rocm-stable --update
 ```
 
 ---
@@ -114,8 +114,8 @@ This re-runs the full install with `--force`, pulling the latest packages define
 Yes, but each needs a different port:
 
 ```powershell
-.\rocmroll.bat launch --instance rocm-stable  --port 8188
-.\rocmroll.bat launch --instance rocm-nightly --port 8189
+.\rocmroll.bat instance launch --name rocm-stable  --port 8188
+.\rocmroll.bat instance launch --name rocm-nightly --port 8189
 ```
 
 ### Do instances share models?
@@ -150,7 +150,7 @@ A JSON file that sets environment variables and ComfyUI launch arguments at star
 ### Can I create my own profile?
 
 ```powershell
-.\rocmroll.bat profile create --profile my-profile
+.\rocmroll.bat profile create --name my-profile
 ```
 
 This launches an interactive wizard. The result is a JSON file in `profiles\`.
@@ -162,7 +162,7 @@ This launches an interactive wizard. The result is a JSON file in `profiles\`.
 ### Where do I find install logs?
 
 ```powershell
-.\rocmroll.bat logs
+.\rocmroll.bat logs show
 ```
 
 Logs are under `logs\install\` as both human-readable `.log` and structured `.jsonl` files.
@@ -180,7 +180,7 @@ See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for detailed guidance on specific e
 ### How do I completely remove an instance?
 
 ```powershell
-.\rocmroll.bat remove --instance rocm-stable
+.\rocmroll.bat instance remove --name rocm-stable --all
 ```
 
 This removes the instance checkout and its Python environment. Shared models, input, output, and workflows are never deleted.

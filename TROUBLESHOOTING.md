@@ -71,7 +71,7 @@ python .\source\scripts\gpu_detect.py --json
 **Fix — Manual GFX override:**
 
 ```powershell
-.\rocmroll.bat install --instance rocm-stable --gfx gfx120X
+.\rocmroll.bat instance install --name rocm-stable --gfx gfx120X
 ```
 
 Use the GFX family key from the `rocm-architectures.json` manifest.
@@ -98,7 +98,7 @@ ERROR ROCMROLL-ROCM-003: pip install failed for torch.
 
 ```powershell
 .\rocmroll.bat cache clean --all
-.\rocmroll.bat repair --instance rocm-stable --component rocm
+.\rocmroll.bat instance repair --name rocm-stable
 .\rocmroll.bat doctor --instance rocm-stable
 ```
 
@@ -113,7 +113,7 @@ ERROR ROCMROLL-ROCM-003: pip install failed for torch.
 - Try switching to stable when diagnosing whether the issue is local or upstream.
 
 ```powershell
-.\rocmroll.bat install --instance rocm-stable --channel stable
+.\rocmroll.bat instance install --name rocm-stable --channel stable
 ```
 
 **Common pip failures:**
@@ -136,8 +136,8 @@ ERROR ROCMROLL-ROCM-003: pip install failed for torch.
 **Fix (automatic):** ROCmRoll routes `gfx103X` and `gfx101X` to the staging nightly index on both channels via the `sourceOverride` key in `source\manifests\rocm-architectures.json`. If your instance was installed before this fix, re-run the install (it converges) or repair the ROCm component:
 
 ```powershell
-.\rocmroll.bat repair --instance rocm-stable --component rocm
-.\rocmroll.bat repair --instance rocm-stable --component launchers
+.\rocmroll.bat instance repair --name rocm-stable
+.\rocmroll.bat instance repair --name rocm-stable
 .\rocmroll.bat rocm validate --instance rocm-stable
 ```
 
@@ -163,7 +163,7 @@ The variable is only set when the installed distribution actually ships that fam
 **If you see this on an existing instance,** regenerate the launcher to pick up the workaround:
 
 ```powershell
-.\rocmroll.bat repair --instance rocm-stable --component launchers
+.\rocmroll.bat instance repair --name rocm-stable
 .\rocmroll.bat rocm validate --instance rocm-stable
 ```
 
@@ -190,9 +190,9 @@ ImportError: DLL load failed while importing torch._C
 | Cause | Fix |
 | --- | --- |
 | AMD driver not installed or outdated | Install/update from [amd.com](https://www.amd.com/en/support) |
-| Missing ROCm SDK DLLs | `.\rocmroll.bat repair --instance rocm-stable --component rocm` |
+| Missing ROCm SDK DLLs | `.\rocmroll.bat instance repair --name rocm-stable` |
 | `rocm-sdk.exe init` was not run | Repair launchers, then launch again |
-| PATH does not include ROCm bin | Generated launcher handles PATH — launch via `rocmroll launch` |
+| PATH does not include ROCm bin | Generated launcher handles PATH — launch via `rocmroll instance launch` |
 
 ---
 
@@ -210,10 +210,10 @@ ImportError: DLL load failed while importing torch._C
 
 | Error message | Fix |
 | --- | --- |
-| `ModuleNotFoundError: No module named 'comfy'` | Repair ComfyUI deps: `.\rocmroll.bat repair --instance rocm-stable --component comfyui` |
+| `ModuleNotFoundError: No module named 'comfy'` | Repair ComfyUI deps: `.\rocmroll.bat instance repair --name rocm-stable` |
 | `address already in use` | Another instance is using port 8188. Use `--port 8189`. |
-| `extra_model_paths.yaml not found` | `.\rocmroll.bat repair --instance rocm-stable --component launchers` |
-| SageAttention import error | `.\rocmroll.bat repair --instance rocm-stable --component patches` |
+| `extra_model_paths.yaml not found` | `.\rocmroll.bat instance repair --name rocm-stable` |
+| SageAttention import error | `.\rocmroll.bat instance repair --name rocm-stable` |
 
 ---
 
@@ -239,7 +239,7 @@ instances\<instance>\user\
 Regenerate the launcher to pick up the fix:
 
 ```powershell
-.\rocmroll.bat repair --instance rocm-stable --component launchers
+.\rocmroll.bat instance repair --name rocm-stable
 ```
 
 **Sharing workflows across instances:**
@@ -247,13 +247,13 @@ Regenerate the launcher to pick up the fix:
 Use the `--shared-workflows` flag to create a symbolic link from the instance's workflow folder to `shared\workflows\`:
 
 ```powershell
-.\rocmroll.bat install --instance rocm-stable --shared-workflows
+.\rocmroll.bat instance install --name rocm-stable
 ```
 
 Or add it to an existing instance:
 
 ```powershell
-.\rocmroll.bat repair --instance rocm-stable --component comfyui --shared-workflows
+.\rocmroll.bat instance repair --name rocm-stable
 ```
 
 This workaround will be removed once the upstream bug is fixed and ROCmRoll re-enables `--user-directory`.
@@ -281,7 +281,7 @@ ERROR: Creating a symbolic link requires elevation or Developer Mode.
 Open PowerShell as Administrator and run:
 
 ```powershell
-.\rocmroll.bat repair --instance rocm-stable --component comfyui --shared-workflows
+.\rocmroll.bat instance repair --name rocm-stable
 ```
 
 **Note:** If `instances\<instance>\user\default\workflows` already exists as a real directory (with workflows in it), ROCmRoll will warn and skip rather than delete your data. Back up those workflows to `shared\workflows\` manually before re-running.
@@ -305,13 +305,13 @@ Look for `[WARN]` entries rather than `[FAIL]` — optional packages report warn
 **Rollback a bad patch:**
 
 ```powershell
-.\rocmroll.bat repair --instance rocm-stable --rollback-patch sageattention-zluda-rdna
+.\rocmroll.bat instance repair --name rocm-stable
 ```
 
 **Re-apply performance packages:**
 
 ```powershell
-.\rocmroll.bat repair --instance rocm-stable --component packages
+.\rocmroll.bat instance repair --name rocm-stable
 ```
 
 **Skip a package permanently:** Edit `source\manifests\package-profiles.json` and set `"required": false` and add your GFX family to `"skipArchitectures"`.
@@ -339,7 +339,7 @@ If the process is gone, the lock is stale.
 **Fix:**
 
 ```powershell
-.\rocmroll.bat install --instance rocm-stable --force
+.\rocmroll.bat instance install --name rocm-stable --force
 ```
 
 `--force` validates the lock (PID and age) before removing it. It will not remove a lock held by an active process.
@@ -439,13 +439,13 @@ This re-downloads (or reuses cached) Python archives and rebuilds the runtime fr
 **Re-install nodes:**
 
 ```powershell
-.\rocmroll.bat install-nodes --instance rocm-stable
+.\rocmroll.bat comfyui nodes --instance rocm-stable --update
 ```
 
 **Update all nodes:**
 
 ```powershell
-.\rocmroll.bat install-nodes --instance rocm-stable --update
+.\rocmroll.bat comfyui nodes --instance rocm-stable --update
 ```
 
 **Skip a problem node:** Edit `source\manifests\custom-nodes.json` and remove the entry, or mark it optional if your version of the manifest supports that field.
@@ -467,7 +467,7 @@ This re-downloads (or reuses cached) Python archives and rebuilds the runtime fr
 **Quick fix — switch to stable:**
 
 ```powershell
-.\rocmroll.bat install --instance rocm-stable --channel stable
+.\rocmroll.bat instance install --name rocm-stable --channel stable
 ```
 
 **Wait and retry:** Nightly issues are often resolved within 24-48 hours as AMD publishes new packages.
