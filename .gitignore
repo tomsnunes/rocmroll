@@ -81,5 +81,8 @@ uv.lock
 # Examples
 /examples/
 
+# Custom
+/custom/
+
 # ROCmRoll
 rocmroll.ini
