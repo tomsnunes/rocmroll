@@ -17,6 +17,57 @@ function Get-CustomNodesManifest {
     return Get-Content $path -Raw -Encoding UTF8 | ConvertFrom-Json
 }
 
+function Invoke-ProcessNodeEntry {
+    param(
+        [pscustomobject]$Node,
+        [string]$NodesFolder,
+        [string]$PythonExe,
+        [string]$PipCacheFolder,
+        [string]$InstanceName,
+        [switch]$Update,
+        [switch]$RequirementsOnly
+    )
+
+    $nodeDir = Join-Path $NodesFolder $Node.name
+    Write-LogInfo "Processing custom node: $($Node.name)" -Comp 'RocmRoll.CustomNodes' -Inst $InstanceName
+
+    if (-not $RequirementsOnly) {
+        if (-not (Test-Path $nodeDir)) {
+            Write-LogInfo "Cloning $($Node.name) from $($Node.repo)" -Comp 'RocmRoll.CustomNodes'
+            $cloneExitCode = Invoke-LoggedNativeCommand -FilePath 'git' -Arguments @('clone', '--depth', '1', '--branch', $Node.ref, $Node.repo, $nodeDir) -Comp 'RocmRoll.CustomNodes' -Op 'CloneCustomNode' -Inst $InstanceName
+            if ($cloneExitCode -ne 0) {
+                Write-LogWarn "Failed to clone custom node '$($Node.name)'" -Comp 'RocmRoll.CustomNodes'
+                return
+            }
+        } elseif ($Update) {
+            Write-LogInfo "Updating $($Node.name)" -Comp 'RocmRoll.CustomNodes'
+            Invoke-LoggedNativeCommand -FilePath 'git' -Arguments (Get-SafeGitRepositoryArguments -RepositoryPath $nodeDir -Arguments @('fetch', 'origin')) -Comp 'RocmRoll.CustomNodes' -Op 'FetchCustomNode' -Inst $InstanceName | Out-Null
+            Invoke-LoggedNativeCommand -FilePath 'git' -Arguments (Get-SafeGitRepositoryArguments -RepositoryPath $nodeDir -Arguments @('checkout', $Node.ref)) -Comp 'RocmRoll.CustomNodes' -Op 'CheckoutCustomNode' -Inst $InstanceName | Out-Null
+            Invoke-LoggedNativeCommand -FilePath 'git' -Arguments (Get-SafeGitRepositoryArguments -RepositoryPath $nodeDir -Arguments @('pull')) -Comp 'RocmRoll.CustomNodes' -Op 'PullCustomNode' -Inst $InstanceName | Out-Null
+        } else {
+            Write-LogDebug "Custom node '$($Node.name)' exists. Use 'rocmroll comfyui nodes --instance INSTANCE --update' to refresh." -Comp 'RocmRoll.CustomNodes'
+        }
+    }
+
+    $shouldInstallReqs = $RequirementsOnly -or $Node.installRequirements
+    if ($shouldInstallReqs -and (Test-Path $nodeDir)) {
+        $req = Join-Path $nodeDir 'requirements.txt'
+        if (Test-Path $req) {
+            Write-LogInfo "Installing requirements for $($Node.name)" -Comp 'RocmRoll.CustomNodes'
+            $pipArgs = @('-m', 'pip', 'install', '--cache-dir', $PipCacheFolder, '-r', $req)
+            $pipExitCode = Invoke-LoggedNativeCommand -FilePath $PythonExe -Arguments $pipArgs -Comp 'RocmRoll.CustomNodes' -Op 'InstallNodeRequirements' -Inst $InstanceName
+            if ($pipExitCode -ne 0) {
+                Write-LogWarn "requirements.txt install for '$($Node.name)' returned exit $pipExitCode" -Comp 'RocmRoll.CustomNodes'
+            }
+        }
+    }
+
+    if (-not $RequirementsOnly) {
+        $commit = (& git -c "safe.directory=$nodeDir" -C $nodeDir rev-parse HEAD 2>$null).Trim()
+        Write-LogSuccess "Custom node '$($Node.name)' ready (commit: $commit)" -Comp 'RocmRoll.CustomNodes'
+    }
+}
+
 function Invoke-InstallCustomNodes {
     param(
         [string]$InstanceName,
@@ -49,43 +100,19 @@ function Invoke-InstallCustomNodes {
     $env:PIP_REQUIRE_VIRTUALENV        = 'false'
 
     foreach ($node in $nodes) {
-        $nodeDir = Join-Path $nodesFolder $node.name
-        Write-LogInfo "Processing custom node: $($node.name)" -Comp 'RocmRoll.CustomNodes' -Inst $InstanceName
+        Invoke-ProcessNodeEntry -Node $node -NodesFolder $nodesFolder -PythonExe $pythonExe `
+            -PipCacheFolder $cfg.PipCacheFolder -InstanceName $InstanceName `
+            -Update:$Update -RequirementsOnly:$RequirementsOnly
+    }
 
-        if (-not $RequirementsOnly) {
-            if (-not (Test-Path $nodeDir)) {
-                Write-LogInfo "Cloning $($node.name) from $($node.repo)" -Comp 'RocmRoll.CustomNodes'
-                $cloneExitCode = Invoke-LoggedNativeCommand -FilePath 'git' -Arguments @('clone', '--depth', '1', '--branch', $node.ref, $node.repo, $nodeDir) -Comp 'RocmRoll.CustomNodes' -Op 'CloneCustomNode' -Inst $InstanceName
-                if ($cloneExitCode -ne 0) {
-                    Write-LogWarn "Failed to clone custom node '$($node.name)'" -Comp 'RocmRoll.CustomNodes'
-                    continue
-                }
-            } elseif ($Update) {
-                Write-LogInfo "Updating $($node.name)" -Comp 'RocmRoll.CustomNodes'
-                Invoke-LoggedNativeCommand -FilePath 'git' -Arguments (Get-SafeGitRepositoryArguments -RepositoryPath $nodeDir -Arguments @('fetch', 'origin')) -Comp 'RocmRoll.CustomNodes' -Op 'FetchCustomNode' -Inst $InstanceName | Out-Null
-                Invoke-LoggedNativeCommand -FilePath 'git' -Arguments (Get-SafeGitRepositoryArguments -RepositoryPath $nodeDir -Arguments @('checkout', $node.ref)) -Comp 'RocmRoll.CustomNodes' -Op 'CheckoutCustomNode' -Inst $InstanceName | Out-Null
-                Invoke-LoggedNativeCommand -FilePath 'git' -Arguments (Get-SafeGitRepositoryArguments -RepositoryPath $nodeDir -Arguments @('pull')) -Comp 'RocmRoll.CustomNodes' -Op 'PullCustomNode' -Inst $InstanceName | Out-Null
-            } else {
-                Write-LogDebug "Custom node '$($node.name)' exists. Use 'rocmroll comfyui nodes --instance INSTANCE --update' to refresh." -Comp 'RocmRoll.CustomNodes'
-            }
-        }
-
-        $shouldInstallReqs = $RequirementsOnly -or $node.installRequirements
-        if ($shouldInstallReqs -and (Test-Path $nodeDir)) {
-            $req = Join-Path $nodeDir 'requirements.txt'
-            if (Test-Path $req) {
-                Write-LogInfo "Installing requirements for $($node.name)" -Comp 'RocmRoll.CustomNodes'
-                $pipArgs = @('-m', 'pip', 'install', '--cache-dir', $cfg.PipCacheFolder, '-r', $req)
-                $pipExitCode = Invoke-LoggedNativeCommand -FilePath $pythonExe -Arguments $pipArgs -Comp 'RocmRoll.CustomNodes' -Op 'InstallNodeRequirements' -Inst $InstanceName
-                if ($pipExitCode -ne 0) {
-                    Write-LogWarn "requirements.txt install for '$($node.name)' returned exit $pipExitCode" -Comp 'RocmRoll.CustomNodes'
-                }
-            }
-        }
-
-        if (-not $RequirementsOnly) {
-            $commit = (& git -c "safe.directory=$nodeDir" -C $nodeDir rev-parse HEAD 2>$null).Trim()
-            Write-LogSuccess "Custom node '$($node.name)' ready (commit: $commit)" -Comp 'RocmRoll.CustomNodes'
+    $customNodesFile = Join-Path (Join-Path (Join-Path $cfg.RootFolder 'custom') $InstanceName) 'custom_nodes.json'
+    if (Test-Path $customNodesFile) {
+        Write-LogInfo "Loading custom nodes from custom\$InstanceName\custom_nodes.json" -Comp 'RocmRoll.CustomNodes' -Inst $InstanceName
+        $customManifest = Get-Content $customNodesFile -Raw -Encoding UTF8 | ConvertFrom-Json
+        foreach ($node in $customManifest.default) {
+            Invoke-ProcessNodeEntry -Node $node -NodesFolder $nodesFolder -PythonExe $pythonExe `
+                -PipCacheFolder $cfg.PipCacheFolder -InstanceName $InstanceName `
+                -Update:$Update -RequirementsOnly:$RequirementsOnly
         }
     }
 }
