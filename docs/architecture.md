@@ -163,6 +163,31 @@ patch
 help
 ```
 
+## Custom Resources Overlay
+
+ROCmRoll supports per-instance resource overlays in a `custom\` folder at the repository root. The folder is root-relative and not user-configurable via `rocmroll.ini`, following the same convention as `workspaces\`.
+
+### Layout
+
+```text
+custom\
+  <instanceName>\
+    requirements.txt      Extra pip packages installed after ComfyUI requirements
+    custom_nodes.json     Extra custom nodes installed after the default manifest
+```
+
+### Custom requirements
+
+`Invoke-InstallComfyDeps` (in `RocmRoll.ComfyUI`) checks for `custom\<instanceName>\requirements.txt` after installing ComfyUI's own `requirements.txt` and `manager_requirements.txt`. If the file exists it is installed with `pip install --upgrade-strategy only-if-needed -r <file>` using the shared pip cache. A failed install raises `ROCMROLL-COMFY-005`.
+
+Because the custom requirements block lives inside `Invoke-InstallComfyDeps` it is automatically executed by all call sites: full install, `comfyui requirements`, `instance update --comfyui`, and `instance repair --comfyui`.
+
+### Custom nodes
+
+`Invoke-InstallCustomNodes` (in `RocmRoll.CustomNodes`) checks for `custom\<instanceName>\custom_nodes.json` after processing the global manifest. The file uses the same JSON schema (`{ "default": [ { name, repo, ref, installRequirements } ] }`). Each entry is processed by the shared `Invoke-ProcessNodeEntry` helper that handles clone, update, and requirements installation. Clone failures are non-fatal warnings.
+
+Because the custom nodes block lives inside `Invoke-InstallCustomNodes` it is automatically executed by all call sites: full install, `comfyui nodes --install`, `comfyui nodes --update`, and `instance repair --custom-nodes`.
+
 ## Install Pipeline
 
 `RocmRoll.Core.Invoke-FullInstall` is the high-level install pipeline. It is idempotent where practical and is protected by an instance lock.
@@ -194,11 +219,11 @@ Channels live in `source\manifests\channels.json`.
 
 | Channel | ComfyUI ref | ROCm source | Default profile | Notes |
 | --- | --- | --- | --- | --- |
-| `stable` | `v0.24.0` | AMD ROCm 7.2.1 direct URLs | `stable` | Pinned release wheels tagged `cp312`; requires Python 3.12 |
+| `stable` | `v0.25.0` | AMD ROCm 7.2.1 direct URLs | `stable` | Pinned release wheels tagged `cp312`; requires Python 3.12 |
 | `preview` | `master` | `https://rocm.nightlies.amd.com/v2/<rocmIndex>/` | `optimized` | Promoted nightly index |
 | `nightly` | `master` | `https://rocm.nightlies.amd.com/v2-staging/<rocmIndex>/` | `optimized` | Most volatile staging index |
-| `rdna1` | `v0.24.0` | `https://rocm.nightlies.amd.com/v2/<rocmIndex>/` | `stable` | Experimental RDNA 1 support, no torch/ROCm `--pre` |
-| `rdna2` | `v0.24.0` | `https://rocm.nightlies.amd.com/v2-staging/<rocmIndex>/` | `stable` | Experimental RDNA 2 support, torch uses `--pre` |
+| `rdna1` | `v0.25.0` | `https://rocm.nightlies.amd.com/v2/<rocmIndex>/` | `stable` | Experimental RDNA 1 support, no torch/ROCm `--pre` |
+| `rdna2` | `v0.25.0` | `https://rocm.nightlies.amd.com/v2-staging/<rocmIndex>/` | `stable` | Experimental RDNA 2 support, torch uses `--pre` |
 
 `RocmRoll.Rocm.Resolve-RocmInstallPlan` handles the difference between direct URL installs and index-based installs:
 
@@ -292,7 +317,7 @@ Current default nodes:
 
 Performance packages are defined in `source\manifests\package-profiles.json`. The full install applies `rocm-performance`, which currently contains:
 
-- `triton-windows==3.7.0.post26`
+- `triton-windows==3.7.1.post27`
 - `sageattention==1.0.6`
 - `bitsandbytes` from a release wheel URL, skipped on `gfx90X`, `gfx94X`, and `gfx950`
 - `flash-attn` from a release wheel URL

@@ -112,17 +112,72 @@ If more than one ready instance exists, `instance launch` can run without `--nam
 .\rocmroll.bat launch
 ```
 
+## Custom Resources
+
+ROCmRoll supports per-instance resource overlays in the `custom\` folder at the repository root. Files placed there are loaded after the global manifests and do not require editing any source file.
+
+### Layout
+
+```text
+custom\
+  <instanceName>\
+    requirements.txt      Optional extra pip packages for this instance
+    custom_nodes.json     Optional extra custom nodes for this instance
+```
+
+### Custom requirements
+
+Place a standard `requirements.txt` in `custom\<instanceName>\`:
+
+```text
+custom\rocm-stable\requirements.txt
+```
+
+ROCmRoll installs it after ComfyUI's own `requirements.txt` using the same pip cache and upgrade strategy. A non-zero pip exit code is a fatal error and reports `ROCMROLL-COMFY-005`.
+
+This file is picked up by every code path that runs ComfyUI dependency installation:
+
+- `instance install`
+- `comfyui requirements`
+- `instance update --comfyui`
+- `instance repair --comfyui`
+
+### Custom nodes
+
+Place a `custom_nodes.json` in `custom\<instanceName>\` using the same format as `source\manifests\custom-nodes.json`:
+
+```json
+{
+  "default": [
+    {
+      "name": "MyCustomNode",
+      "repo": "https://github.com/user/MyCustomNode.git",
+      "ref": "main",
+      "installRequirements": true
+    }
+  ]
+}
+```
+
+ROCmRoll clones and configures these nodes after the default manifest nodes. Clone failures are non-fatal warnings. The list is processed by every code path that handles custom nodes:
+
+- `instance install`
+- `comfyui nodes --install` / `--update`
+- `instance repair --custom-nodes`
+
+The `custom\` folder is root-relative and is not user-configurable in `rocmroll.ini`.
+
 ## Channels
 
 Channels are defined in `source\manifests\channels.json`.
 
 | Channel | ComfyUI ref | ROCm source | Default profile | Notes |
 | --- | --- | --- | --- | --- |
-| `stable` | `v0.24.0` | AMD ROCm 7.2.1 direct URLs | `stable` | Pinned ROCmRoll baseline; Python 3.12 required |
+| `stable` | `v0.25.0` | AMD ROCm 7.2.1 direct URLs | `stable` | Pinned ROCmRoll baseline; Python 3.12 required |
 | `preview` | `master` | `https://rocm.nightlies.amd.com/v2/<rocmIndex>/` | `optimized` | Promoted nightly index |
 | `nightly` | `master` | `https://rocm.nightlies.amd.com/v2-staging/<rocmIndex>/` | `optimized` | Cutting-edge staging index |
-| `rdna1` | `v0.24.0` | `https://rocm.nightlies.amd.com/v2/<rocmIndex>/` | `stable` | Experimental RDNA 1 support |
-| `rdna2` | `v0.24.0` | `https://rocm.nightlies.amd.com/v2-staging/<rocmIndex>/` | `stable` | Experimental RDNA 2 support |
+| `rdna1` | `v0.25.0` | `https://rocm.nightlies.amd.com/v2/<rocmIndex>/` | `stable` | Experimental RDNA 1 support |
+| `rdna2` | `v0.25.0` | `https://rocm.nightlies.amd.com/v2-staging/<rocmIndex>/` | `stable` | Experimental RDNA 2 support |
 
 Stable currently installs:
 
@@ -533,7 +588,7 @@ The full install applies the `rocm-performance` profile from `source\manifests\p
 
 Current performance packages:
 
-- `triton-windows==3.7.0.post26`
+- `triton-windows==3.7.1.post27`
 - `sageattention==1.0.6`
 - `bitsandbytes` from a release wheel URL
 - `flash-attn` from a release wheel URL
