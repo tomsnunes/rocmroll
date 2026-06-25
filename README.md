@@ -173,11 +173,11 @@ Channels are defined in `source\manifests\channels.json`.
 
 | Channel | ComfyUI ref | ROCm source | Default profile | Notes |
 | --- | --- | --- | --- | --- |
-| `stable` | `v0.25.0` | AMD ROCm 7.2.1 direct URLs | `stable` | Pinned ROCmRoll baseline; Python 3.12 required |
+| `stable` | `v0.26.0` | AMD ROCm 7.2.1 direct URLs | `stable` | Pinned ROCmRoll baseline; Python 3.12 required |
 | `preview` | `master` | `https://rocm.nightlies.amd.com/v2/<rocmIndex>/` | `optimized` | Promoted nightly index |
 | `nightly` | `master` | `https://rocm.nightlies.amd.com/v2-staging/<rocmIndex>/` | `optimized` | Cutting-edge staging index |
-| `rdna1` | `v0.25.0` | `https://rocm.nightlies.amd.com/v2/<rocmIndex>/` | `stable` | Experimental RDNA 1 support |
-| `rdna2` | `v0.25.0` | `https://rocm.nightlies.amd.com/v2-staging/<rocmIndex>/` | `stable` | Experimental RDNA 2 support |
+| `rdna1` | `v0.26.0` | `https://rocm.nightlies.amd.com/v2/<rocmIndex>/` | `stable` | Experimental RDNA 1 support |
+| `rdna2` | `v0.26.0` | `https://rocm.nightlies.amd.com/v2-staging/<rocmIndex>/` | `stable` | Experimental RDNA 2 support |
 
 Stable currently installs:
 

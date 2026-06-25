@@ -219,11 +219,11 @@ Channels live in `source\manifests\channels.json`.
 
 | Channel | ComfyUI ref | ROCm source | Default profile | Notes |
 | --- | --- | --- | --- | --- |
-| `stable` | `v0.25.0` | AMD ROCm 7.2.1 direct URLs | `stable` | Pinned release wheels tagged `cp312`; requires Python 3.12 |
+| `stable` | `v0.26.0` | AMD ROCm 7.2.1 direct URLs | `stable` | Pinned release wheels tagged `cp312`; requires Python 3.12 |
 | `preview` | `master` | `https://rocm.nightlies.amd.com/v2/<rocmIndex>/` | `optimized` | Promoted nightly index |
 | `nightly` | `master` | `https://rocm.nightlies.amd.com/v2-staging/<rocmIndex>/` | `optimized` | Most volatile staging index |
-| `rdna1` | `v0.25.0` | `https://rocm.nightlies.amd.com/v2/<rocmIndex>/` | `stable` | Experimental RDNA 1 support, no torch/ROCm `--pre` |
-| `rdna2` | `v0.25.0` | `https://rocm.nightlies.amd.com/v2-staging/<rocmIndex>/` | `stable` | Experimental RDNA 2 support, torch uses `--pre` |
+| `rdna1` | `v0.26.0` | `https://rocm.nightlies.amd.com/v2/<rocmIndex>/` | `stable` | Experimental RDNA 1 support, no torch/ROCm `--pre` |
+| `rdna2` | `v0.26.0` | `https://rocm.nightlies.amd.com/v2-staging/<rocmIndex>/` | `stable` | Experimental RDNA 2 support, torch uses `--pre` |
 
 `RocmRoll.Rocm.Resolve-RocmInstallPlan` handles the difference between direct URL installs and index-based installs:
 
