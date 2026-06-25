@@ -1,12 +1,12 @@
 {
-  "name": "optimized",
-  "description": "Full ROCm performance profile. Enables Sage-Attention Triton backend, MIOpen kernel search, SageAttention, and dynamic VRAM. Disables smart memory and pinned memory for better AMD GPU performance. Default for the nightly channel.",
+  "name": "flash-attention",
+  "description": "Full ROCm performance profile. Enables Flash-Attention Triton backend, MIOpen kernel search, SageAttention, and dynamic VRAM. Disables smart memory and pinned memory for better AMD GPU performance. Default for the nightly channel.",
   "version": "1.0",
   "defaultForChannels": ["nightly"],
   "env": {
     "COMFYUI_ENABLE_MIOPEN": "0",
     "FLASH_ATTENTION_TRITON_AMD_ENABLE": "TRUE",
-    "FLASH_ATTENTION_TRITON_AMD_AUTOTUNE": "TRUE",
+    "FLASH_ATTENTION_TRITON_AMD_AUTOTUNE": "FALSE",
     "MIOPEN_FIND_ENFORCE": "1",
     "MIOPEN_FIND_MODE": "2",
     "MIOPEN_DEBUG_DISABLE_FIND_DB": "0",
@@ -25,7 +25,7 @@
     "--disable-smart-memory",
     "--disable-pinned-memory",
     "--preview-method", "auto",
-    "--use-sage-attention",
+    "--use-flash-attention",
     "--enable-manager",
     "--enable-manager-legacy-ui",
     "--enable-dynamic-vram"

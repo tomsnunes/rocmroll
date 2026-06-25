@@ -161,7 +161,7 @@ if ($IsLegacyGpu) {
 # ---------------------------------------------------------------------------
 # Logging setup
 # ---------------------------------------------------------------------------
-$LogFile = Join-Path $LogsFolder ("{0}_{1}_launch.log" -f (Get-Date -Format 'yyyy-MM-dd'), '{InstanceName}')
+$LogFile = Join-Path $LogsFolder ("{0}_{1}_launch.log" -f (Get-Date -Format 'yyyy-MM-dd_HHmmss'), '{InstanceName}')
 if (-not (Test-Path $LogsFolder)) { New-Item -ItemType Directory -Path $LogsFolder -Force | Out-Null }
 if (-not (Test-Path $TritonCacheFolder)) { New-Item -ItemType Directory -Path $TritonCacheFolder -Force | Out-Null }
 if (-not (Test-Path $TunableOpCacheFolder)) { New-Item -ItemType Directory -Path $TunableOpCacheFolder -Force | Out-Null }

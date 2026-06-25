@@ -68,7 +68,7 @@ function Invoke-FullInstall {
     Import-Module (Join-Path $modDir 'RocmRoll.ComfyDesktop.psm1') -Force -Global
 
     $cfg = Get-Config
-    $now = (Get-Date).ToString('yyyy-MM-dd')
+    $now = (Get-Date).ToString('yyyy-MM-dd_HHmmss')
 
     # Logging setup
     $logPrefix = Join-Path $cfg.LogsInstallFolder "${now}_${InstanceName}_install"
