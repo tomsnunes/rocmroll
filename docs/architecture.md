@@ -357,6 +357,7 @@ Profile commands:
 ```powershell
 rocmroll profile list
 rocmroll profile apply --instance rocm-stable
+rocmroll profile apply --instance rocm-stable --profile flash-attention
 rocmroll profile show --name optimized
 rocmroll profile create --name my-profile
 rocmroll profile remove --name my-profile
@@ -368,7 +369,11 @@ Built-in profile files currently include:
 | --- | --- | --- |
 | `stable.json` | `stable` | Baseline profile; default for `stable`, `rdna1`, and `rdna2` |
 | `stable-dynamic-vram.json` | `stable-dynamic-vram` | Baseline with `--enable-dynamic-vram` |
-| `optimized.json` | `optimized` | Performance profile; default for `nightly` and `preview` |
+| `optimized.json` | `optimized` | Performance profile; default for `preview` |
+| `flash-attention.json` | `flash-attention` | Flash-Attention Triton backend, MIOpen settings, dynamic VRAM; autotuning off; default for `nightly` |
+| `flash-attention-autotune.json` | `flash-attention-autotune` | Like `flash-attention` with `FLASH_ATTENTION_TRITON_AMD_AUTOTUNE=TRUE` |
+| `sage-attention.json` | `sage-attention` | SageAttention backend, MIOpen settings, dynamic VRAM; autotuning off |
+| `sage-attention-autotune.json` | `sage-attention-autotune` | Like `sage-attention` with `FLASH_ATTENTION_TRITON_AMD_AUTOTUNE=TRUE` |
 | `performance-autotune.json` | `performance-autotune` | Aggressive MIOpen/Triton autotuning |
 | `experimental.json` | local experimental content | The current file contains an object named `optimized`; do not treat it as a distinct built-in profile without checking the file |
 
@@ -391,6 +396,8 @@ Fixed launch behavior includes:
 - Launch logs under `logs\launch`
 
 `rocmroll instance launch --profile NAME` passes the override through to the generated launcher. Old launchers that do not support profile arguments are rejected with a repair hint.
+
+`rocmroll profile apply --instance NAME [--profile NAME]` regenerates the launcher for the instance and refreshes the ComfyUI Desktop entry with the profile's `launchArgs` and `env`. When `--profile` is omitted the channel default is used.
 
 ## State, Logs, Locks, And Cache
 

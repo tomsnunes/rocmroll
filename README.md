@@ -217,7 +217,11 @@ Profiles live in `profiles\` by default. The folder is configurable through `roc
 | --- | --- | --- | --- |
 | `stable.json` | `stable` | `stable`, `rdna1`, `rdna2` | Baseline AMD profile with minimal env vars |
 | `stable-dynamic-vram.json` | `stable-dynamic-vram` | none | Baseline plus `--enable-dynamic-vram` |
-| `optimized.json` | `optimized` | `preview`, `nightly` | Flash-Attention Triton, MIOpen settings, SageAttention, dynamic VRAM |
+| `optimized.json` | `optimized` | `preview` | Flash-Attention Triton, MIOpen settings, SageAttention, dynamic VRAM |
+| `flash-attention.json` | `flash-attention` | `nightly` | Flash-Attention Triton backend, MIOpen settings, dynamic VRAM; Triton autotuning disabled |
+| `flash-attention-autotune.json` | `flash-attention-autotune` | none | Like `flash-attention` but with `FLASH_ATTENTION_TRITON_AMD_AUTOTUNE=TRUE` |
+| `sage-attention.json` | `sage-attention` | none | SageAttention backend, MIOpen settings, dynamic VRAM; Triton autotuning disabled |
+| `sage-attention-autotune.json` | `sage-attention-autotune` | none | Like `sage-attention` but with `FLASH_ATTENTION_TRITON_AMD_AUTOTUNE=TRUE` |
 | `performance-autotune.json` | `performance-autotune` | none | Aggressive MIOpen and Triton autotuning |
 | `experimental.json` | local experimental content | none | Check file contents before using; it currently contains an object named `optimized` |
 
@@ -242,10 +246,16 @@ Override a profile at launch time:
 .\rocmroll.bat instance launch --name rocm-stable --profile performance-autotune
 ```
 
-Regenerate launchers with a different default profile:
+Apply a profile to an existing instance (regenerates launchers and updates ComfyUI Desktop):
 
 ```powershell
-.\rocmroll.bat instance repair --name rocm-stable
+.\rocmroll.bat profile apply --instance rocm-stable --profile flash-attention
+```
+
+Omit `--profile` to apply the channel default:
+
+```powershell
+.\rocmroll.bat profile apply --instance rocm-stable
 ```
 
 Profile JSON shape:
@@ -505,7 +515,7 @@ Common command-specific options:
 | `--name NAME` | Instance aggregate commands and workspace, environment, or profile commands |
 | `--instance NAME` | Doctor, ROCm, ComfyUI, `profile apply`, and patch commands |
 | `--environment`, `--rocm`, `--comfyui`, `--patches`, `--all` | Component scopes listed by instance info/update/repair/remove help |
-| `--profile NAME` | Instance install and launch |
+| `--profile NAME` | Instance install, launch, and `profile apply` |
 | `--force` | Forced install/update/removal or stale install-lock override where listed |
 | `--gfx ARCH`, `--port PORT`, `--url HOST`, `--patch-id ID`, `--shared-workflows` | Specialized commands shown in command help |
 
@@ -685,6 +695,7 @@ The Desktop integration:
 - Reuses an existing Desktop ID on update
 - Removes the Desktop entry during full removal and when ComfyUI or environment components are removed
 - Stores the Desktop ID in instance state as `comfyDesktopId`
+- `profile apply` refreshes the Desktop entry with the applied profile's `launchArgs` and `env`
 
 ## Troubleshooting
 
