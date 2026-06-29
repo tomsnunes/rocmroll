@@ -97,6 +97,7 @@ function Invoke-RepairComfyUi {
         [switch]$SharedWorkflows
     )
 
+    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force -Global
     Import-Module (Join-Path $PSScriptRoot 'RocmRoll.ComfyUI.psm1') -Force
     $cfg = Get-Config
     $instancePath = if ($InstanceState -and $InstanceState.PSObject.Properties['path'] -and $InstanceState.path) {

@@ -227,7 +227,7 @@ function Get-RocmRollCommandDefinitions {
             SubCommands = [ordered]@{
                 help = New-CliSubCommand -Name 'help' -Synopsis 'Show profile help' -Usage 'rocmroll profile help' -Handler 'ShowHelp'
                 list = New-CliSubCommand -Name 'list' -Synopsis 'List profiles' -Usage 'rocmroll profile list' -Handler 'Invoke-RocmRollProfileCommand'
-                apply = New-CliSubCommand -Name 'apply' -Synopsis 'Apply the instance default profile' -Usage 'rocmroll profile apply --instance NAME' -Options @($instanceReq; $workspaceOpt) -Handler 'Invoke-RocmRollProfileCommand'
+                apply = New-CliSubCommand -Name 'apply' -Synopsis 'Apply a profile to an instance' -Usage 'rocmroll profile apply --instance NAME [--profile NAME]' -Options @($instanceReq; $workspaceOpt; (New-CliOption -Name 'profile' -Value -Meta 'NAME' -Desc 'Profile to apply (defaults to channel default)')) -Handler 'Invoke-RocmRollProfileCommand'
                 show = New-CliSubCommand -Name 'show' -Synopsis 'Show a profile' -Usage 'rocmroll profile show --name NAME' -Options @($profileNameReq) -Handler 'Invoke-RocmRollProfileCommand'
                 create = New-CliSubCommand -Name 'create' -Synopsis 'Create a profile' -Usage 'rocmroll profile create --name NAME' -Options @($profileNameReq) -Handler 'Invoke-RocmRollProfileCommand'
                 remove = New-CliSubCommand -Name 'remove' -Synopsis 'Remove a profile' -Usage 'rocmroll profile remove --name NAME' -Options @($profileNameReq) -Handler 'Invoke-RocmRollProfileCommand'
