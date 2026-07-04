@@ -2,7 +2,7 @@
   "name": "flash-attention-autotune",
   "description": "Full ROCm performance profile. Enables Flash-Attention Triton backend, MIOpen kernel search, SageAttention, and dynamic VRAM. Disables smart memory and pinned memory for better AMD GPU performance. Default for the nightly channel.",
   "version": "1.0",
-  "defaultForChannels": ["nightly"],
+  "defaultForChannels": [],
   "env": {
     "COMFYUI_ENABLE_MIOPEN": "0",
     "TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL": "1",
