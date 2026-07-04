@@ -75,7 +75,8 @@ function Invoke-FullInstall {
     Initialize-Logging -Level 'INFO' -LogFile "$logPrefix.log" -JsonlFile "$logPrefix.jsonl"
     Initialize-UI -TotalSteps 10
 
-    # Channel manifest
+    # Channel manifest (resolve removed-channel aliases from old instance state first)
+    $Channel         = Resolve-ChannelName -Channel $Channel
     $channelManifest = Get-Content (Join-Path $cfg.ManifestsFolder 'channels.json') -Raw -Encoding UTF8 | ConvertFrom-Json
     $channelCfg      = $channelManifest.$Channel
     if (-not $channelCfg) { throw "Unknown channel '$Channel'" }
@@ -123,6 +124,7 @@ function Invoke-FullInstall {
                 }
 
                 Write-StepWarn "Live GPU detection unavailable; using cached GPU: $cachedName / $($cachedGpu['gfx']) / $cachedArchitecture"
+                $cachedChip = if ($cachedGpu.ContainsKey('multiArchChip')) { $cachedGpu['multiArchChip'] } else { $null }
                 $gpu = [pscustomobject]@{
                     detected           = $true
                     supported          = $true
@@ -131,6 +133,7 @@ function Invoke-FullInstall {
                     architecture       = $cachedArchitecture
                     gfx                = $cachedGpu['gfx']
                     rocmIndex          = $cachedGpu['rocmIndex']
+                    multiArchChip      = $cachedChip
                     requiresPreRelease = $cachedRequiresPreRelease
                     detectionMethod    = 'state'
                 }
@@ -141,14 +144,38 @@ function Invoke-FullInstall {
         Write-StepOk "GPU: $($gpu.name) / $($gpu.gfx) / $($gpu.architecture)"
         Write-StepInfo "ROCm index: $($gpu.rocmIndex)"
 
-        # RDNA 1/2 are not supported on the AMD stable release index.
-        # Automatically switch to the dedicated per-architecture channel so the
-        # correct index-based source profile is used for the rest of the install.
-        if ($Channel -eq 'stable' -and $gpu.gfx -in @('gfx101X', 'gfx103X')) {
-            $legacyChannel = if ($gpu.gfx -eq 'gfx101X') { 'rdna1' } else { 'rdna2' }
-            Write-StepWarn "GPU family $($gpu.gfx) is not supported on the AMD stable release index."
-            Write-StepInfo "Automatically selecting channel '$legacyChannel' (AMD staging nightly ROCm wheels)."
-            $Channel    = $legacyChannel
+        # Manifest-driven channel switching. Family entries in
+        # rocm-architectures.json can opt out of specific channel sources:
+        #   stableSupported=false    -> no official AMD stable release wheels
+        #                               (RDNA 1/2); reroute stable to preview.
+        #   multiArchSupported=false -> AMD does not publish multi-arch Windows
+        #                               wheels for this family yet (gfx94X,
+        #                               gfx950); reroute multiArch channels to
+        #                               the per-family legacy-staging index.
+        $archEntry = $null
+        if ($gpu.gfx) {
+            $archManifestTable = Get-ArchitectureManifest
+            $archProperty = $archManifestTable.PSObject.Properties[$gpu.gfx]
+            if ($archProperty) { $archEntry = $archProperty.Value }
+        }
+        $stableSupported = $true
+        $multiArchSupported = $true
+        if ($archEntry) {
+            if ($archEntry.PSObject.Properties['stableSupported']) { $stableSupported = [bool]$archEntry.stableSupported }
+            if ($archEntry.PSObject.Properties['multiArchSupported']) { $multiArchSupported = [bool]$archEntry.multiArchSupported }
+        }
+
+        if ($Channel -eq 'stable' -and -not $stableSupported) {
+            Write-StepWarn "GPU family $($gpu.gfx) is not supported by the AMD stable release wheels."
+            Write-StepInfo "Automatically selecting channel 'preview' (AMD whl-multi-arch index)."
+            $Channel    = 'preview'
+            $channelCfg = $channelManifest.$Channel
+        }
+
+        if ($channelCfg.rocm.source -eq 'multiArch' -and -not $multiArchSupported) {
+            Write-StepWarn "GPU family $($gpu.gfx) is not yet published on the AMD multi-arch index."
+            Write-StepInfo "Automatically selecting channel 'legacy-staging' (per-family v2-staging index)."
+            $Channel    = 'legacy-staging'
             $channelCfg = $channelManifest.$Channel
         }
 
@@ -159,18 +186,21 @@ function Invoke-FullInstall {
                 name              = $gpu.name
                 gfx               = $gpu.gfx
                 rocmIndex         = $gpu.rocmIndex
+                multiArchChip     = $gpu.multiArchChip
                 architectureName  = $gpu.architecture
                 requiresPreRelease= $gpu.requiresPreRelease
             }
 
         # Step 6 - ROCm/PyTorch
         Write-Step "Installing ROCm/PyTorch"
-        if ($channelCfg.rocm.source -eq 'index') {
+        if ($channelCfg.rocm.source -eq 'multiArch') {
+            Write-StepInfo "Chip: $($gpu.multiArchChip)"
+        } elseif ($channelCfg.rocm.source -eq 'index') {
             Write-StepInfo "Index: $($gpu.rocmIndex)"
         } else {
             Write-StepInfo "Source: AMD ROCm $($channelCfg.rocm.version) direct URLs"
         }
-        Invoke-InstallRocm -EnvironmentName $envName -RocmIndex $gpu.rocmIndex `
+        Invoke-InstallRocm -EnvironmentName $envName -RocmIndex $gpu.rocmIndex -DeviceChip $gpu.multiArchChip `
             -RocmProfile $channelCfg.rocm -Channel $Channel -PythonVersion $PythonVersion
         Write-StepOk "torch installed and validated"
 
@@ -205,8 +235,9 @@ function Invoke-FullInstall {
         }
 
         # Generate launchers
+        $launcherRocmIndex = if ($channelCfg.rocm.source -eq 'multiArch') { $gpu.multiArchChip } else { $gpu.rocmIndex }
         Invoke-GenerateLaunchers -InstanceName $InstanceName -EnvironmentName $envName `
-            -GfxVersion $gpu.gfx -RocmIndex $gpu.rocmIndex -Port 8188 -Channel $Channel -ProfileName $ProfileName
+            -GfxVersion $gpu.gfx -RocmIndex $launcherRocmIndex -Port 8188 -Channel $Channel -ProfileName $ProfileName
 
         # Bind the instance path into the environment's python312._pth so ComfyUI Desktop imports work
         Set-EnvironmentInstancePath -EnvironmentName $envName -InstanceName $InstanceName

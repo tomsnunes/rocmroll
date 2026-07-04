@@ -70,6 +70,33 @@ function Resolve-RepairRocmIndex {
     return $rocmIndex
 }
 
+function Resolve-RepairMultiArchChip {
+    param(
+        [string]$InstanceName,
+        [string]$EnvironmentName,
+        [hashtable]$PreRepairGpu
+    )
+
+    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Hardware.psm1') -Force
+    $envState = Get-EnvironmentState -Name $EnvironmentName
+    $chip = ''
+    if ($envState -and $envState.gpu) {
+        $prop = $envState.gpu.PSObject.Properties['multiArchChip']
+        if ($prop -and $prop.Value) { $chip = [string]$prop.Value }
+    }
+    if (-not $chip -and $PreRepairGpu.ContainsKey('multiArchChip') -and $PreRepairGpu['multiArchChip']) {
+        $chip = [string]$PreRepairGpu['multiArchChip']
+    }
+    if (-not $chip) {
+        Write-LogInfo "multiArchChip not in state; running GPU detection" -Comp 'RocmRoll.Repair' -Inst $InstanceName
+        $detectedGpu = Invoke-GpuDetect -Quiet
+        if ($detectedGpu.detected -and $detectedGpu.multiArchChip) {
+            $chip = [string]$detectedGpu.multiArchChip
+        }
+    }
+    return $chip
+}
+
 function Invoke-RepairRocmPackages {
     param(
         [string]$InstanceName,
@@ -84,8 +111,12 @@ function Invoke-RepairRocmPackages {
     $rocmProfile = Get-RocmProfileForChannel -Channel $channel
     $rocmIndex = Resolve-RepairRocmIndex -InstanceName $InstanceName `
         -EnvironmentName $InstanceState.environment -PreRepairGpu $PreRepairGpu
+    $deviceChip = if ($rocmProfile.source -eq 'multiArch') {
+        Resolve-RepairMultiArchChip -InstanceName $InstanceName `
+            -EnvironmentName $InstanceState.environment -PreRepairGpu $PreRepairGpu
+    } else { '' }
 
-    Invoke-InstallRocm -EnvironmentName $InstanceState.environment -RocmIndex $rocmIndex `
+    Invoke-InstallRocm -EnvironmentName $InstanceState.environment -RocmIndex $rocmIndex -DeviceChip $deviceChip `
         -RocmProfile $rocmProfile -Channel $channel -PythonVersion $RuntimeVersion -Force | Out-Null
 }
 
@@ -111,6 +142,7 @@ function Invoke-RepairComfyUi {
         } else {
             'stable'
         }
+        $channel = Resolve-ChannelName -Channel $channel
         $channels = Get-Content (Join-Path $cfg.ManifestsFolder 'channels.json') -Raw -Encoding UTF8 | ConvertFrom-Json
         $channelConfig = $channels.$channel
         if (-not $channelConfig) { throw "ROCMROLL-REPAIR-002: Unknown channel '$channel' for instance '$InstanceName'." }
@@ -261,7 +293,7 @@ function Invoke-RepairComponent {
 function Invoke-RollbackPatch {
     param([string]$InstanceName, [string]$PatchId)
 
-    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force
+    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force -Global
     $cfg = Get-Config
     $envState = Get-EnvironmentState -Name (Get-InstanceState -Name $InstanceName).environment
     $envFolder = $envState.path

@@ -79,6 +79,34 @@ function Resolve-GfxFamily {
     return $null
 }
 
+function Resolve-GfxChip {
+    param([string]$DeviceName, $ArchTable)
+    if (-not $ArchTable) { return $null }
+    $lower  = $DeviceName.ToLower()
+    $lookup = foreach ($prop in $ArchTable.PSObject.Properties) {
+        if (-not $prop.Value.PSObject.Properties['chips']) { continue }
+        foreach ($chip in $prop.Value.chips) {
+            foreach ($dev in $chip.devices) {
+                [pscustomobject]@{ fragment = $dev.ToLower(); chip = $chip.id }
+            }
+        }
+    }
+    $match = $lookup |
+        Sort-Object { $_.fragment.Length } -Descending |
+        Where-Object { $lower.Contains($_.fragment) } |
+        Select-Object -First 1
+    if ($match) { return $match.chip }
+    return $null
+}
+
+function Get-DefaultChipForFamily {
+    param($ArchInfo)
+    if (-not $ArchInfo -or -not $ArchInfo.PSObject.Properties['chips']) { return $null }
+    $first = $ArchInfo.chips | Select-Object -First 1
+    if ($first) { return $first.id }
+    return $null
+}
+
 function Invoke-GpuDetect {
     param(
         [string]$PythonExe   = '',   # kept for call-site compatibility; not used
@@ -108,6 +136,7 @@ function Invoke-GpuDetect {
             architecture       = if ($ai) { $ai.architecture } else { 'Unknown' }
             gfx                = $GfxOverride
             rocmIndex          = if ($ai) { $ai.index } else { '' }
+            multiArchChip      = Get-DefaultChipForFamily -ArchInfo $ai
             requiresPreRelease = [bool]$(if ($ai) { $ai.requiresPreRelease } else { $false })
             detectionMethod    = 'override'
         }
@@ -141,6 +170,7 @@ function Invoke-GpuDetect {
             architecture       = $null
             gfx                = $null
             rocmIndex          = $null
+            multiArchChip      = $null
             requiresPreRelease = $false
             detectionMethod    = 'none'
             error              = 'No AMD GPU found'
@@ -150,6 +180,8 @@ function Invoke-GpuDetect {
     $gfx      = Resolve-GfxFamily -DeviceName $gpu.name -ArchTable $archTable
     $archInfo = if ($gfx -and $archTable) { $archTable.PSObject.Properties[$gfx] } else { $null }
     $ai       = if ($archInfo) { $archInfo.Value } else { $null }
+    $chip     = Resolve-GfxChip -DeviceName $gpu.name -ArchTable $archTable
+    if (-not $chip) { $chip = Get-DefaultChipForFamily -ArchInfo $ai }
 
     return [PSCustomObject][ordered]@{
         detected           = $true
@@ -159,13 +191,14 @@ function Invoke-GpuDetect {
         architecture       = if ($ai) { $ai.architecture } else { 'Unknown' }
         gfx                = $gfx
         rocmIndex          = if ($ai) { $ai.index } else { $null }
+        multiArchChip      = $chip
         requiresPreRelease = [bool]$(if ($ai) { $ai.requiresPreRelease } else { $false })
         detectionMethod    = $method
     }
 }
 
 function Get-ArchitectureManifest {
-    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force
+    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force -Global
     $cfg  = Get-Config
     $path = Join-Path $cfg.ManifestsFolder 'rocm-architectures.json'
     if (-not (Test-Path $path)) {

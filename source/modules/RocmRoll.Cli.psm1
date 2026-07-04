@@ -103,7 +103,7 @@ function Get-RocmRollCommandDefinitions {
                 install = New-CliSubCommand -Name 'install' -Synopsis 'Install an instance' -Usage 'rocmroll instance install --name NAME [options]' -Options @(
                     $nameReq
                     $workspaceOpt
-                    New-CliOption -Name 'channel' -Value -Meta 'stable|preview|nightly|rdna1|rdna2' -Default 'stable' -Desc 'Select a specific install channel'
+                    New-CliOption -Name 'channel' -Value -Meta 'stable|preview|nightly|legacy|legacy-staging' -Default 'stable' -Desc 'Select a specific install channel'
                     New-CliOption -Name 'profile' -Value -Meta 'NAME' -Desc 'Select a specific execution profile'
                     New-CliOption -Name 'gfx' -Value -Meta 'ARCH' -Desc 'Override GPU architecture'
                     New-CliOption -Name 'python' -Value -Meta 'VERSION' -Default '3.12.10' -Desc 'Select a specific Python version'

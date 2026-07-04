@@ -24,6 +24,9 @@ function Invoke-GenerateLaunchers {
     Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force -Global
     Import-Module (Join-Path $PSScriptRoot 'RocmRoll.State.psm1') -Force -Global
     $cfg            = Get-Config
+    # Resolve removed-channel aliases immediately after the Config import so the
+    # call cannot be affected by any module re-import that runs in between.
+    $Channel        = Resolve-ChannelName -Channel $Channel
     $instanceFolder = Join-Path $cfg.InstancesFolder $InstanceName
     $envFolder      = Join-Path $cfg.EnvironmentsFolder $EnvironmentName
 
@@ -37,22 +40,29 @@ function Invoke-GenerateLaunchers {
         $envFolder = $envState.path
     }
 
+    # Look up the channel manifest once: used both to resolve the default profile
+    # and to decide which GPU-state field (family rocmIndex vs. exact multiArchChip)
+    # backs the {RocmIndex} launcher token when the caller didn't pass -RocmIndex.
+    $chanObj = $null
+    $chanFile = Join-Path $cfg.ManifestsFolder 'channels.json'
+    if ((Test-Path $chanFile) -and $Channel) {
+        try {
+            $chanManifest = Get-Content $chanFile -Raw -Encoding UTF8 | ConvertFrom-Json
+            $chanObj = $chanManifest.$Channel
+        } catch { }
+    }
+
     if (-not $RocmIndex -and $envState -and $envState.PSObject.Properties['gpu'] -and $envState.gpu) {
-        $indexProperty = $envState.gpu.PSObject.Properties['rocmIndex']
+        $isMultiArch = $chanObj -and $chanObj.rocm -and ([string]$chanObj.rocm.source -eq 'multiArch')
+        $gpuFieldName = if ($isMultiArch) { 'multiArchChip' } else { 'rocmIndex' }
+        $indexProperty = $envState.gpu.PSObject.Properties[$gpuFieldName]
         if ($indexProperty -and $indexProperty.Value) { $RocmIndex = [string]$indexProperty.Value }
     }
 
     # Resolve default profile from channel manifest when not explicitly provided
     if (-not $ProfileName) {
-        $chanFile = Join-Path $cfg.ManifestsFolder 'channels.json'
-        if ((Test-Path $chanFile) -and $Channel) {
-            try {
-                $chanManifest = Get-Content $chanFile -Raw -Encoding UTF8 | ConvertFrom-Json
-                $chanObj = $chanManifest.$Channel
-                if ($chanObj -and $chanObj.defaultProfile) {
-                    $ProfileName = $chanObj.defaultProfile
-                }
-            } catch { }
+        if ($chanObj -and $chanObj.defaultProfile) {
+            $ProfileName = $chanObj.defaultProfile
         }
         if (-not $ProfileName) {
             $ProfileName = if ($Channel -eq 'stable') { 'stable' } else { 'optimized' }

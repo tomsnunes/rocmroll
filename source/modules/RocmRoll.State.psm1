@@ -88,7 +88,7 @@ function Write-StateFile {
 function Get-RuntimeState {
     param([string]$Version)
     $cfg = (Get-Module RocmRoll.Config | ForEach-Object { & { Get-Config } })
-    if (-not $cfg) { Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force }
+    if (-not $cfg) { Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force -Global }
     $cfg = Get-Config
     $path = Join-Path $cfg.RuntimeStateFolder "runtime-$Version.json"
     return Read-StateFile -Path $path
@@ -101,7 +101,7 @@ function Set-RuntimeState {
         [string]$Status = 'ready',
         [hashtable]$Source = @{}
     )
-    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force
+    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force -Global
     $cfg = Get-Config
     $filePath = Join-Path $cfg.RuntimeStateFolder "runtime-$Version.json"
     $state = @{
@@ -117,7 +117,7 @@ function Set-RuntimeState {
 
 function Get-EnvironmentState {
     param([string]$Name)
-    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force
+    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force -Global
     $cfg = Get-Config
     $path = Join-Path $cfg.EnvStateFolder "environment-$Name.json"
     return Read-StateFile -Path $path
@@ -132,7 +132,7 @@ function Set-EnvironmentState {
         [hashtable]$Gpu = @{},
         [hashtable]$Packages = @{}
     )
-    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force
+    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force -Global
     $cfg = Get-Config
     $filePath = Join-Path $cfg.EnvStateFolder "environment-$Name.json"
     $state = @{
@@ -150,7 +150,7 @@ function Set-EnvironmentState {
 
 function Get-InstanceState {
     param([string]$Name)
-    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force
+    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force -Global
     $cfg = Get-Config
     $path = Join-Path $cfg.InstanceStateFolder "instance-$Name.json"
     return Read-StateFile -Path $path
@@ -167,7 +167,7 @@ function Set-InstanceState {
         [hashtable]$Paths = @{},
         [string[]]$CustomNodes = @()
     )
-    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force
+    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force -Global
     $cfg = Get-Config
     $filePath = Join-Path $cfg.InstanceStateFolder "instance-$Name.json"
     $state = @{
@@ -195,7 +195,7 @@ function Set-InstanceComfyDesktopId {
         [string]$Name,
         [string]$ComfyDesktopId
     )
-    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force
+    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force -Global
     $cfg      = Get-Config
     $filePath = Join-Path $cfg.InstanceStateFolder "instance-$Name.json"
     $existing = Read-StateFile -Path $filePath
@@ -206,7 +206,7 @@ function Set-InstanceComfyDesktopId {
 }
 
 function Get-GlobalState {
-    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force
+    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force -Global
     $cfg = Get-Config
     $path = Join-Path $cfg.StateFolder 'global.json'
     return Read-StateFile -Path $path
@@ -214,7 +214,7 @@ function Get-GlobalState {
 
 function Set-GlobalState {
     param([hashtable]$State)
-    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force
+    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force -Global
     $cfg = Get-Config
     $path = Join-Path $cfg.StateFolder 'global.json'
     Write-StateFile -Path $path -State $State

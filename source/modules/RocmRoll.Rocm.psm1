@@ -75,6 +75,7 @@ function Get-RocmChannelConfig {
     Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force -Global
 
     $cfg = Get-Config
+    $Channel = Resolve-ChannelName -Channel $Channel
     $manifestPath = Join-Path $cfg.ManifestsFolder 'channels.json'
     $channelManifest = Get-Content $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
     $channelCfg = Get-RocmObjectValue -InputObject $channelManifest -PropertyName $Channel
@@ -128,9 +129,29 @@ function Assert-RocmPythonVersionCompatible {
     }
 }
 
+function New-RocmIndexPipArgs {
+    param(
+        [hashtable]$Config,
+        [string]$IndexUrl,
+        [switch]$UseWheelhouse,
+        [string]$WheelhouseFolder = ''
+    )
+
+    $pipArgs = @(
+        '-m', 'pip', 'install',
+        '--index-url', $IndexUrl,
+        '--cache-dir', $Config.PipCacheFolder
+    )
+    if ($UseWheelhouse -and $WheelhouseFolder) {
+        $pipArgs += @('--find-links', $WheelhouseFolder)
+    }
+    return $pipArgs
+}
+
 function Resolve-RocmInstallPlan {
     param(
         [string]$RocmIndex,
+        [string]$DeviceChip = '',
         [object]$RocmProfile = $null,
         [string]$PythonVersion = '',
         [switch]$AllowPreRelease,
@@ -179,6 +200,53 @@ function Resolve-RocmInstallPlan {
         }
     }
 
+    if ($source -eq 'multiArch') {
+        if (-not $DeviceChip) {
+            throw "ROCMROLL-ROCM-013: A resolved GPU chip id is required for whl-multi-arch ROCm profiles."
+        }
+
+        $indexUrl = [string](Get-RocmObjectValue -InputObject $RocmProfile -PropertyName 'indexUrl' -DefaultValue 'https://rocm.nightlies.amd.com/whl-multi-arch/')
+        $torchPackages = @(@(ConvertTo-RocmStringArray -Value (Get-RocmObjectValue -InputObject $RocmProfile -PropertyName 'torchPackages')) |
+            ForEach-Object { $_ -replace '\{device\}', $DeviceChip })
+        $rocmPackages = @(@(ConvertTo-RocmStringArray -Value (Get-RocmObjectValue -InputObject $RocmProfile -PropertyName 'rocmPackages')) |
+            ForEach-Object { $_ -replace '\{device\}', $DeviceChip })
+        $torchDeps = @(ConvertTo-RocmStringArray -Value (Get-RocmObjectValue -InputObject $RocmProfile -PropertyName 'torchDependencies' -DefaultValue @()))
+        if ($torchPackages.Count -eq 0) { $torchPackages = @("torch[device-$DeviceChip]", "torchvision[device-$DeviceChip]", 'torchaudio') }
+        if ($rocmPackages.Count -eq 0) { $rocmPackages = @("rocm[libraries,devel,device-$DeviceChip]") }
+
+        $profileAllowPreRelease = [bool](Get-RocmObjectValue -InputObject $RocmProfile -PropertyName 'allowPreRelease' -DefaultValue $false)
+        $profileAllowTorchPreRelease = [bool](Get-RocmObjectValue -InputObject $RocmProfile -PropertyName 'allowTorchPreRelease' -DefaultValue $profileAllowPreRelease)
+        $profileAllowRocmPreRelease  = [bool](Get-RocmObjectValue -InputObject $RocmProfile -PropertyName 'allowRocmPreRelease'  -DefaultValue $profileAllowPreRelease)
+        $effectiveAllowTorchPreRelease = $profileAllowTorchPreRelease -or [bool]$AllowPreRelease
+        $effectiveAllowRocmPreRelease  = $profileAllowRocmPreRelease  -or [bool]$AllowPreRelease
+
+        $torchArgs = @(New-RocmIndexPipArgs -Config $cfg -IndexUrl $indexUrl -UseWheelhouse:$UseWheelhouse -WheelhouseFolder $WheelhouseFolder)
+        $rocmArgs  = @(New-RocmIndexPipArgs -Config $cfg -IndexUrl $indexUrl -UseWheelhouse:$UseWheelhouse -WheelhouseFolder $WheelhouseFolder)
+        if ($effectiveAllowTorchPreRelease) { $torchArgs += '--pre' }
+        if ($effectiveAllowRocmPreRelease)  { $rocmArgs  += '--pre' }
+        $torchArgs += $torchPackages
+        $rocmArgs  += $rocmPackages
+
+        return [pscustomobject][ordered]@{
+            source               = 'multiArch'
+            rocmIndex            = $RocmIndex
+            deviceChip           = $DeviceChip
+            indexUrl             = $indexUrl
+            allowPreRelease      = $effectiveAllowTorchPreRelease -or $effectiveAllowRocmPreRelease
+            allowTorchPreRelease = $effectiveAllowTorchPreRelease
+            allowRocmPreRelease  = $effectiveAllowRocmPreRelease
+            sdkArgs            = @()
+            torchArgs          = @($torchArgs)
+            rocmArgs           = @($rocmArgs)
+            torchDeps          = @($torchDeps)
+            allPackageSpecs    = @($torchPackages + $rocmPackages)
+            rocmVersion        = [string](Get-RocmObjectValue -InputObject $RocmProfile -PropertyName 'version' -DefaultValue '')
+            torchVersion       = [string](Get-RocmObjectValue -InputObject $RocmProfile -PropertyName 'torchVersion' -DefaultValue '')
+            torchvisionVersion = [string](Get-RocmObjectValue -InputObject $RocmProfile -PropertyName 'torchvisionVersion' -DefaultValue '')
+            torchaudioVersion  = [string](Get-RocmObjectValue -InputObject $RocmProfile -PropertyName 'torchaudioVersion' -DefaultValue '')
+        }
+    }
+
     if (-not $RocmIndex) {
         throw "ROCMROLL-ROCM-009: ROCm index is required for index-based ROCm profiles."
     }
@@ -200,20 +268,8 @@ function Resolve-RocmInstallPlan {
     $effectiveAllowTorchPreRelease = $profileAllowTorchPreRelease -or [bool]$AllowPreRelease
     $effectiveAllowRocmPreRelease  = $profileAllowRocmPreRelease  -or [bool]$AllowPreRelease
 
-    $torchArgs = @(
-        '-m', 'pip', 'install',
-        '--index-url', $indexUrl,
-        '--cache-dir', $cfg.PipCacheFolder
-    )
-    $rocmArgs = @(
-        '-m', 'pip', 'install',
-        '--index-url', $indexUrl,
-        '--cache-dir', $cfg.PipCacheFolder
-    )
-    if ($UseWheelhouse -and $WheelhouseFolder) {
-        $torchArgs += @('--find-links', $WheelhouseFolder)
-        $rocmArgs  += @('--find-links', $WheelhouseFolder)
-    }
+    $torchArgs = @(New-RocmIndexPipArgs -Config $cfg -IndexUrl $indexUrl -UseWheelhouse:$UseWheelhouse -WheelhouseFolder $WheelhouseFolder)
+    $rocmArgs  = @(New-RocmIndexPipArgs -Config $cfg -IndexUrl $indexUrl -UseWheelhouse:$UseWheelhouse -WheelhouseFolder $WheelhouseFolder)
     if ($effectiveAllowTorchPreRelease) { $torchArgs += '--pre' }
     if ($effectiveAllowRocmPreRelease)  { $rocmArgs  += '--pre' }
     $torchArgs += $torchPackages
@@ -247,9 +303,15 @@ function Test-RocmStateMatchesInstallPlan {
     if (-not $Packages.ContainsKey('rocmSource')) { return $false }
     if ([string]$Packages['rocmSource'] -ne [string]$InstallPlan.source) { return $false }
 
-    if ($InstallPlan.source -eq 'index') {
+    if ($InstallPlan.source -in @('index', 'multiArch')) {
         if (-not $Packages.ContainsKey('rocmIndex')) { return $false }
         if ([string]$Packages['rocmIndex'] -ne [string]$InstallPlan.rocmIndex) { return $false }
+    }
+
+    if ($InstallPlan.source -eq 'multiArch') {
+        $planDeviceChip = if ($InstallPlan.PSObject.Properties['deviceChip']) { [string]$InstallPlan.deviceChip } else { '' }
+        $stateDeviceChip = if ($Packages.ContainsKey('rocmDeviceChip')) { [string]$Packages['rocmDeviceChip'] } else { '' }
+        if ($stateDeviceChip -ne $planDeviceChip) { return $false }
     }
 
     if ($InstallPlan.rocmVersion) {
@@ -276,6 +338,9 @@ function Set-RocmPackageStateValues {
     $Packages['rocmIndex'] = [string]$InstallPlan.rocmIndex
     if ($InstallPlan.rocmVersion) { $Packages['rocmVersion'] = [string]$InstallPlan.rocmVersion }
     if ($InstallPlan.indexUrl) { $Packages['rocmIndexUrl'] = [string]$InstallPlan.indexUrl }
+    if ($InstallPlan.PSObject.Properties['deviceChip'] -and $InstallPlan.deviceChip) {
+        $Packages['rocmDeviceChip'] = [string]$InstallPlan.deviceChip
+    }
 
     $torchVersion = if ($InstallPlan.torchVersion) {
         [string]$InstallPlan.torchVersion
@@ -307,6 +372,7 @@ function Invoke-InstallRocm {
     param(
         [string]$EnvironmentName,
         [string]$RocmIndex,
+        [string]$DeviceChip = '',
         [object]$RocmProfile = $null,
         [string]$Channel = '',
         [string]$PythonVersion = '',
@@ -322,8 +388,9 @@ function Invoke-InstallRocm {
     $cfg        = Get-Config
     $pythonExe  = Get-EnvironmentPython -Name $EnvironmentName
 
-    $wheelhouse = if ($RocmIndex) { Join-Path $cfg.WheelhouseFolder $RocmIndex } else { '' }
-    $useWheelhouse = $RocmIndex -and (Test-WheelhouseHasWheels -WheelhouseFolder $wheelhouse)
+    $wheelhouseKey = if ($DeviceChip) { $DeviceChip } else { $RocmIndex }
+    $wheelhouse = if ($wheelhouseKey) { Join-Path $cfg.WheelhouseFolder $wheelhouseKey } else { '' }
+    $useWheelhouse = $wheelhouseKey -and (Test-WheelhouseHasWheels -WheelhouseFolder $wheelhouse)
 
     if (-not (Test-Path $pythonExe)) {
         throw "ROCMROLL-ROCM-001: Python environment '$EnvironmentName' not found at $pythonExe"
@@ -343,7 +410,7 @@ function Invoke-InstallRocm {
         $RocmProfile = Get-RocmProfileForChannel -Channel $Channel
     }
 
-    $installPlan = Resolve-RocmInstallPlan -RocmIndex $RocmIndex -RocmProfile $RocmProfile `
+    $installPlan = Resolve-RocmInstallPlan -RocmIndex $RocmIndex -DeviceChip $DeviceChip -RocmProfile $RocmProfile `
         -PythonVersion $stateRuntime -AllowPreRelease:$AllowPreRelease `
         -UseWheelhouse:$useWheelhouse -WheelhouseFolder $wheelhouse
 
@@ -404,13 +471,15 @@ function Invoke-InstallRocm {
         throw "ROCMROLL-ROCM-011: ROCm profile did not resolve any torch package arguments."
     }
 
-    if ($installPlan.source -eq 'index') {
+    if ($installPlan.source -eq 'multiArch') {
+        Write-LogInfo "Installing torch from AMD whl-multi-arch index: $($installPlan.indexUrl) (chip: $DeviceChip)" -Comp 'RocmRoll.Rocm' -Op 'InstallTorch' -Inst $EnvironmentName
+    } elseif ($installPlan.source -eq 'index') {
         Write-LogInfo "Installing torch from ROCm index: $($installPlan.indexUrl)" -Comp 'RocmRoll.Rocm' -Op 'InstallTorch' -Inst $EnvironmentName
     } else {
         Write-LogInfo "Installing torch from AMD direct URLs" -Comp 'RocmRoll.Rocm' -Op 'InstallTorch' -Inst $EnvironmentName
     }
 
-    if ($useWheelhouse -and $installPlan.source -eq 'index') {
+    if ($useWheelhouse -and $installPlan.source -in @('index', 'multiArch')) {
         Write-LogInfo "Using wheelhouse cache: $wheelhouse" -Comp 'RocmRoll.Rocm' -Op 'InstallTorch' -Inst $EnvironmentName
     }
 
@@ -424,7 +493,7 @@ function Invoke-InstallRocm {
     # --- Step 2: rocm[libraries,devel] ---
     if ($installPlan.rocmArgs.Count -gt 0) {
         Write-LogInfo "Installing ROCm packages from index" -Comp 'RocmRoll.Rocm' -Op 'InstallRocmLibs' -Inst $EnvironmentName
-        if ($useWheelhouse -and $installPlan.source -eq 'index') {
+        if ($useWheelhouse -and $installPlan.source -in @('index', 'multiArch')) {
             Write-LogInfo "Using wheelhouse cache: $wheelhouse" -Comp 'RocmRoll.Rocm' -Op 'InstallRocmLibs' -Inst $EnvironmentName
         }
 
@@ -447,7 +516,8 @@ function Invoke-InstallRocm {
     }
 
     # --- Step 4: Validate ---
-    $validResult = Invoke-ValidateRocm -EnvironmentName $EnvironmentName -RocmIndex $RocmIndex
+    $validationIndex = if ($installPlan.source -eq 'multiArch') { $DeviceChip } else { $RocmIndex }
+    $validResult = Invoke-ValidateRocm -EnvironmentName $EnvironmentName -RocmIndex $validationIndex
     if (-not $validResult.passed) {
         $torchOk = $validResult.PSObject.Properties['torchImportable'] -and [bool]$validResult.torchImportable
         if (-not $torchOk) {
