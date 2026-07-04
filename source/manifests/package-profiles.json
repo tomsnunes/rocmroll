@@ -22,9 +22,9 @@
       {
         "name": "bitsandbytes",
         "source": "url",
-        "url": "https://github.com/bitsandbytes-foundation/bitsandbytes/releases/download/continuous-release_main/bitsandbytes-1.33.7.preview-py3-none-win_amd64.whl",
+        "url": "https://github.com/0xDELUXA/bitsandbytes_win_rocm/releases/download/0.50.0.dev0-py3.12-rocm7.15-win_amd64_all/bitsandbytes-0.50.0.dev0-cp312-cp312-win_amd64.whl",
         "required": true,
-        "skipArchitectures": ["gfx90X", "gfx94X", "gfx950"]
+        "skipArchitectures": [""]
       },
       {
         "name": "flash-attn",
