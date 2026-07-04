@@ -26,7 +26,7 @@ Implemented areas include:
 - Python 3.12.10 runtime creation from embeddable Python plus full ZIP enrichment
 - Per-instance Python environments
 - AMD GPU detection with manual `--gfx` override
-- Stable, preview, nightly, RDNA1, and RDNA2 channel manifests
+- Stable, preview, nightly, legacy, and legacy-staging channel manifests
 - ComfyUI Git mirror cache and per-instance clone
 - Instance-local custom node install/update
 - Generated `extra_model_paths.yaml`
@@ -173,11 +173,11 @@ Channels are defined in `source\manifests\channels.json`.
 
 | Channel | ComfyUI ref | ROCm source | Default profile | Notes |
 | --- | --- | --- | --- | --- |
-| `stable` | `v0.26.0` | AMD ROCm 7.2.1 direct URLs | `stable` | Pinned ROCmRoll baseline; Python 3.12 required |
-| `preview` | `master` | `https://rocm.nightlies.amd.com/v2/<rocmIndex>/` | `optimized` | Promoted nightly index |
-| `nightly` | `master` | `https://rocm.nightlies.amd.com/v2-staging/<rocmIndex>/` | `optimized` | Cutting-edge staging index |
-| `rdna1` | `v0.26.0` | `https://rocm.nightlies.amd.com/v2/<rocmIndex>/` | `stable` | Experimental RDNA 1 support |
-| `rdna2` | `v0.26.0` | `https://rocm.nightlies.amd.com/v2-staging/<rocmIndex>/` | `stable` | Experimental RDNA 2 support |
+| `stable` | `v0.27.0` | AMD ROCm 7.2.1 direct URLs | `stable` | Pinned ROCmRoll baseline; Python 3.12 required |
+| `preview` | `master` | `https://rocm.nightlies.amd.com/whl-multi-arch/` | `optimized` | AMD's unified multi-arch wheel index (promoted) |
+| `nightly` | `master` | `https://rocm.nightlies.amd.com/whl-staging-multi-arch/` | `optimized` | Staging multi-arch index; more volatile than preview |
+| `legacy` | `master` | `https://rocm.nightlies.amd.com/v2/<rocmIndex>/` | `optimized` | Per-GPU-family v2 index (pre-multi-arch scheme) |
+| `legacy-staging` | `master` | `https://rocm.nightlies.amd.com/v2-staging/<rocmIndex>/` | `optimized` | Per-GPU-family v2-staging index; serves gfx942/gfx950 |
 
 Stable currently installs:
 
@@ -187,25 +187,31 @@ Stable currently installs:
 - torchvision `0.24.1+rocm7.2.1`
 - torchaudio `2.9.1+rocm7.2.1`
 
-`preview` and `nightly` install `torch`, `torchvision`, `torchaudio`, and `rocm[libraries,devel]` from AMD ROCm indexes. `nightly` is more volatile because it uses the staging index.
+`preview` and `nightly` install from AMD's unified multi-arch wheel indexes. Those are single flat package indexes covering every supported GPU rather than one folder per family, so package selection happens through pip extras keyed to the exact GPU chip instead of the index URL: `torch[device-gfx1100]`, `torchvision[device-gfx1100]`, `torchaudio`, `rocm[libraries,devel,device-gfx1100]`. ROCmRoll resolves the exact chip (not just the GPU family) automatically during detection - see "Supported GPU Families" below. `preview` uses the promoted index, `nightly` the staging index, mirroring the old `v2`/`v2-staging` split.
 
-### RDNA 1 And RDNA 2
+`legacy` and `legacy-staging` keep the older per-GPU-family index scheme (`v2`/`v2-staging` plus a `rocmIndex` folder such as `gfx110X-all`), installing generic `torch`, `torchvision`, `torchaudio`, and `rocm[libraries,devel]`. They exist as a fallback for GPUs not yet published on the multi-arch indexes and for anyone who needs the previous behavior.
 
-RDNA 1 (`gfx101X`) and RDNA 2 (`gfx103X`) are experimental on Windows ROCm. AMD has no official Windows ROCm stable release wheels for these GPU families, so ROCmRoll uses dedicated index-based channels.
+### Automatic Channel Switching
 
-When `--channel stable` is selected and ROCmRoll detects RDNA 1 or RDNA 2, it automatically switches channels:
+Channel switching is manifest-driven through two optional per-family flags in `source\manifests\rocm-architectures.json` (absent means supported):
 
-| GPU family | Auto-selected channel |
+| Flag | Families | Effect |
+| --- | --- | --- |
+| `stableSupported: false` | `gfx101X` (RDNA 1), `gfx103X` (RDNA 2) | `--channel stable` automatically switches to `preview`; AMD publishes no official Windows stable release wheels for these families |
+| `multiArchSupported: false` | `gfx94X` (MI300/MI325), `gfx950` (MI350/MI355) | `--channel preview`/`nightly` automatically switches to `legacy-staging`; AMD does not publish multi-arch Windows wheels for these families yet |
+
+RDNA 1 and RDNA 2 are experimental on Windows ROCm and now install from the multi-arch `preview`/`nightly` channels like every other supported family. The former dedicated `rdna1`/`rdna2` channels were removed; instances installed with them are transparently treated as `preview` (see "Channel Migration" below).
+
+### Channel Migration
+
+Instance state records the channel it was installed with. Removed channel names are aliased to their replacements at every lookup, so existing instances keep working without manual edits:
+
+| Old channel | Now resolves to |
 | --- | --- |
-| `gfx101X` | `rdna1` |
-| `gfx103X` | `rdna2` |
+| `rdna1` | `preview` |
+| `rdna2` | `preview` |
 
-You can also select them explicitly:
-
-```powershell
-.\rocmroll.bat instance install --name my-rdna1 --channel rdna1
-.\rocmroll.bat instance install --name my-rdna2 --channel rdna2
-```
+The canonical name is written back to instance state on the next full `instance install`/`instance update`.
 
 ## Profiles
 
@@ -215,10 +221,10 @@ Profiles live in `profiles\` by default. The folder is configurable through `roc
 
 | Profile file | Profile | Default channel | Summary |
 | --- | --- | --- | --- |
-| `stable.json` | `stable` | `stable`, `rdna1`, `rdna2` | Baseline AMD profile with minimal env vars |
+| `stable.json` | `stable` | `stable` | Baseline AMD profile with minimal env vars |
 | `stable-dynamic-vram.json` | `stable-dynamic-vram` | none | Baseline plus `--enable-dynamic-vram` |
-| `optimized.json` | `optimized` | `preview` | Flash-Attention Triton, MIOpen settings, SageAttention, dynamic VRAM |
-| `flash-attention.json` | `flash-attention` | `nightly` | Flash-Attention Triton backend, MIOpen settings, dynamic VRAM; Triton autotuning disabled |
+| `optimized.json` | `optimized` | `preview`, `nightly`, `legacy`, `legacy-staging` | Flash-Attention Triton, MIOpen settings, SageAttention, dynamic VRAM |
+| `flash-attention.json` | `flash-attention` | none | Flash-Attention Triton backend, MIOpen settings, dynamic VRAM; Triton autotuning disabled |
 | `flash-attention-autotune.json` | `flash-attention-autotune` | none | Like `flash-attention` but with `FLASH_ATTENTION_TRITON_AMD_AUTOTUNE=TRUE` |
 | `sage-attention.json` | `sage-attention` | none | SageAttention backend, MIOpen settings, dynamic VRAM; Triton autotuning disabled |
 | `sage-attention-autotune.json` | `sage-attention-autotune` | none | Like `sage-attention` but with `FLASH_ATTENTION_TRITON_AMD_AUTOTUNE=TRUE` |
@@ -307,6 +313,12 @@ Manual override example:
 ```powershell
 .\rocmroll.bat instance install --name rocm-stable --gfx gfx120X
 ```
+
+### Exact GPU Chip Resolution (Multi-Arch Channels)
+
+Each family above bundles one or more physical GPU chips (for example `gfx110X` covers `gfx1100`, `gfx1101`, `gfx1102`, and `gfx1103`). The `stable`/`legacy`/`legacy-staging` channels only need the family-level `rocmIndex` because AMD publishes one wheel index per family. The multi-arch indexes used by `preview` and `nightly` need the exact chip instead, since ROCm SDK device packages are published per chip, not per family.
+
+Each family entry in `rocm-architectures.json` has a `chips` array mapping device names to exact chip ids. GPU detection resolves both the family (`gfx`/`rocmIndex`, used by the per-family channels) and the exact chip (`multiArchChip`, used by `preview` and `nightly`) from the same detected device name. When `--gfx` overrides to a family key instead of detecting hardware, ROCmRoll defaults `multiArchChip` to the first chip listed for that family.
 
 ## What Install Does
 
@@ -510,7 +522,7 @@ Common command-specific options:
 | Option | Used by |
 | --- | --- |
 | `--workspace NAME` | Commands whose help explicitly lists workspace selection |
-| `--channel stable\|preview\|nightly\|rdna1\|rdna2` | Instance install and list filtering |
+| `--channel stable\|preview\|nightly\|legacy\|legacy-staging` | Instance install and list filtering |
 | `--python VERSION` | Instance install; default `3.12.10` |
 | `--name NAME` | Instance aggregate commands and workspace, environment, or profile commands |
 | `--instance NAME` | Doctor, ROCm, ComfyUI, `profile apply`, and patch commands |
@@ -570,7 +582,7 @@ Per-instance environments are copied from the runtime and named like:
 <instance>-py312
 ```
 
-ROCm/PyTorch installation is selected by channel. Index-based installs can use wheels from `.cache\wheelhouse\<rocmIndex>\` through `--find-links` when that folder contains wheels.
+ROCm/PyTorch installation is selected by channel. `index`-source installs (`legacy`, `legacy-staging`) can use wheels from `.cache\wheelhouse\<rocmIndex>\` through `--find-links` when that folder contains wheels; the `multiArch`-source channels (`preview`, `nightly`) use `.cache\wheelhouse\<multiArchChip>\` instead, keyed by the exact GPU chip.
 
 Manual ROCm validation:
 
