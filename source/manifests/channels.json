@@ -5,7 +5,7 @@
     "comfyui": {
       "source": "git",
       "repo": "https://github.com/Comfy-Org/ComfyUI.git",
-      "ref": "v0.26.0",
+      "ref": "v0.27.0",
       "pinCommit": null
     },
     "python": {
@@ -39,7 +39,7 @@
     }
   },
   "preview": {
-    "description": "Preview ROCm from TheRock nightly v2 index and latest ComfyUI master. More stable than; less cutting-edge.",
+    "description": "Promoted ROCm from AMD's unified whl-multi-arch index and latest ComfyUI master.",
     "defaultProfile": "optimized",
     "comfyui": {
       "source": "git",
@@ -51,17 +51,16 @@
       "version": "3.12.10"
     },
     "rocm": {
-      "source": "index",
-      "indexBase": "https://rocm.nightlies.amd.com/v2",
+      "source": "multiArch",
+      "indexUrl": "https://rocm.nightlies.amd.com/whl-multi-arch/",
       "allowPreRelease": true,
-      "packageSet": "latest",
       "torchPackages": [
-        "torch",
-        "torchvision",
+        "torch[device-{device}]",
+        "torchvision[device-{device}]",
         "torchaudio"
       ],
       "rocmPackages": [
-        "rocm[libraries,devel]"
+        "rocm[libraries,devel,device-{device}]"
       ],
       "torchDependencies": [
         "filelock",
@@ -82,7 +81,49 @@
     }
   },
   "nightly": {
-    "description": "Latest ROCm from TheRock nightly v2 staging index and latest ComfyUI master. Less stable than; More cutting-edge.",
+    "description": "Staging ROCm from AMD's whl-staging-multi-arch index and latest ComfyUI master. More cutting-edge and more volatile than preview.",
+    "defaultProfile": "optimized",
+    "comfyui": {
+      "source": "git",
+      "repo": "https://github.com/Comfy-Org/ComfyUI.git",
+      "ref": "master",
+      "pinCommit": null
+    },
+    "python": {
+      "version": "3.12.10"
+    },
+    "rocm": {
+      "source": "multiArch",
+      "indexUrl": "https://rocm.nightlies.amd.com/whl-staging-multi-arch/",
+      "allowPreRelease": true,
+      "torchPackages": [
+        "torch[device-{device}]",
+        "torchvision[device-{device}]",
+        "torchaudio"
+      ],
+      "rocmPackages": [
+        "rocm[libraries,devel,device-{device}]"
+      ],
+      "torchDependencies": [
+        "filelock",
+        "fsspec",
+        "jinja2",
+        "mpmath==1.3.0",
+        "networkx",
+        "numpy",
+        "pillow",
+        "setuptools<82",
+        "sympy",
+        "typing-extensions"
+      ]
+    },
+    "packages": {
+      "tritonWindows": "3.7.1.post27",
+      "sageAttention": "1.0.6"
+    }
+  },
+  "legacy": {
+    "description": "Per-GPU-family v2 nightly index (pre-multi-arch scheme) with latest ComfyUI master.",
     "defaultProfile": "optimized",
     "comfyui": {
       "source": "git",
@@ -95,7 +136,7 @@
     },
     "rocm": {
       "source": "index",
-      "indexBase": "https://rocm.nightlies.amd.com/v2-staging",
+      "indexBase": "https://rocm.nightlies.amd.com/v2",
       "allowPreRelease": true,
       "packageSet": "latest",
       "torchPackages": [
@@ -124,58 +165,13 @@
       "sageAttention": "1.0.6"
     }
   },
-  "rdna1": {
-    "description": "Dedicated experimental channel for RDNA 1",
-    "defaultProfile": "stable",
+  "legacy-staging": {
+    "description": "Per-GPU-family v2-staging nightly index. Serves gfx942/gfx950 until AMD publishes their multi-arch Windows wheels.",
+    "defaultProfile": "optimized",
     "comfyui": {
       "source": "git",
       "repo": "https://github.com/Comfy-Org/ComfyUI.git",
-      "ref": "v0.26.0",
-      "pinCommit": null
-    },
-    "python": {
-      "version": "3.12.10"
-    },
-    "rocm": {
-      "source": "index",
-      "indexBase": "https://rocm.nightlies.amd.com/v2",
-      "allowPreRelease": false,
-      "allowTorchPreRelease": false,
-      "allowRocmPreRelease": false,
-      "packageSet": "latest",
-      "torchPackages": [
-        "torch",
-        "torchvision",
-        "torchaudio"
-      ],
-      "rocmPackages": [
-        "rocm[libraries,devel]"
-      ],
-      "torchDependencies": [
-        "filelock",
-        "fsspec",
-        "jinja2",
-        "mpmath==1.3.0",
-        "networkx",
-        "numpy",
-        "pillow",
-        "setuptools<82",
-        "sympy",
-        "typing-extensions"
-      ]
-    },
-    "packages": {
-      "tritonWindows": "3.7.1.post27",
-      "sageAttention": "1.0.6"
-    }
-  },
-  "rdna2": {
-    "description": "Dedicated experimental channel for RDNA 2",
-    "defaultProfile": "stable",
-    "comfyui": {
-      "source": "git",
-      "repo": "https://github.com/Comfy-Org/ComfyUI.git",
-      "ref": "v0.26.0",
+      "ref": "master",
       "pinCommit": null
     },
     "python": {
@@ -184,9 +180,7 @@
     "rocm": {
       "source": "index",
       "indexBase": "https://rocm.nightlies.amd.com/v2-staging",
-      "allowPreRelease": false,
-      "allowTorchPreRelease": true,
-      "allowRocmPreRelease": false,
+      "allowPreRelease": true,
       "packageSet": "latest",
       "torchPackages": [
         "torch",
