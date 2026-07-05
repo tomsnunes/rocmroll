@@ -170,7 +170,7 @@ function Set-PythonPthFile {
 
 function Test-RuntimeIntegrity {
     param([string]$Version = '3.12.10')
-    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force
+    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force -Global
     $cfg    = Get-Config
     $folder = Join-Path $cfg.RuntimesFolder "python-$Version"
     $exe    = Join-Path $folder 'python.exe'

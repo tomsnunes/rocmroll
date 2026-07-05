@@ -113,7 +113,7 @@ function Initialize-Config {
     $cacheFolder        = Resolve-IniPath $p['cache']        (Join-Path $RootFolder '.cache')        $RootFolder
 
     # Apply active workspace path overrides (highest precedence, layered on top of [paths]).
-    # $WorkspaceName parameter takes priority over the [active] section in rocmroll.ini —
+    # $WorkspaceName parameter takes priority over the [active] section in rocmroll.ini -
     # this enables transient per-command overrides without modifying the persistent config.
     $workspacesFolder    = Join-Path $RootFolder 'workspaces'
     $activeWorkspaceName = ''
@@ -250,6 +250,24 @@ function Get-RocmIndexUrl {
     return "$($cfg.RocmIndexBase)/$RocmIndex/"
 }
 
+function Resolve-ChannelName {
+    <#
+    .SYNOPSIS
+        Maps removed channel names persisted in old instance state to their
+        current replacements. RDNA 1/2 GPUs install from the multi-arch
+        preview channel since the dedicated rdna1/rdna2 channels were removed.
+    #>
+    param([string]$Channel)
+
+    if (-not $Channel) { return $Channel }
+
+    switch ($Channel.ToLowerInvariant()) {
+        'rdna1' { return 'preview' }
+        'rdna2' { return 'preview' }
+        default { return $Channel }
+    }
+}
+
 # ---------------------------------------------------------------------------
 # Folder structure initialisation
 # ---------------------------------------------------------------------------
@@ -369,6 +387,6 @@ function Initialize-DefaultConfigFile {
 }
 
 Export-ModuleMember -Function Initialize-Config, Get-Config, Get-ConfigValue,
-    Get-RuntimeFolder, Get-RocmIndexUrl,
+    Get-RuntimeFolder, Get-RocmIndexUrl, Resolve-ChannelName,
     Initialize-FolderStructure, Initialize-DefaultConfigFile,
     Read-IniFile

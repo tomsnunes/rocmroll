@@ -211,7 +211,10 @@ The flow is:
 15. Write instance/environment state and optionally register with ComfyUI Desktop.
 16. Run instance validation and print a summary.
 
-If `stable` is requested on RDNA 1 or RDNA 2 (`gfx101X` or `gfx103X`), install automatically switches to the dedicated `rdna1` or `rdna2` channel because those GPU families are not supported by the AMD stable release index.
+Channel switching during install is manifest-driven by two optional per-family booleans in `rocm-architectures.json` (absent means `true`):
+
+- `stableSupported: false` (`gfx101X`, `gfx103X`): `stable` automatically switches to `preview` because AMD publishes no official Windows stable release wheels for these families.
+- `multiArchSupported: false` (`gfx94X`, `gfx950`): multi-arch channels (`preview`, `nightly`) automatically switch to `legacy-staging` because AMD does not publish multi-arch Windows wheels for these families yet.
 
 ## Channels And ROCm Planning
 
@@ -219,19 +222,29 @@ Channels live in `source\manifests\channels.json`.
 
 | Channel | ComfyUI ref | ROCm source | Default profile | Notes |
 | --- | --- | --- | --- | --- |
-| `stable` | `v0.26.0` | AMD ROCm 7.2.1 direct URLs | `stable` | Pinned release wheels tagged `cp312`; requires Python 3.12 |
-| `preview` | `master` | `https://rocm.nightlies.amd.com/v2/<rocmIndex>/` | `optimized` | Promoted nightly index |
-| `nightly` | `master` | `https://rocm.nightlies.amd.com/v2-staging/<rocmIndex>/` | `optimized` | Most volatile staging index |
-| `rdna1` | `v0.26.0` | `https://rocm.nightlies.amd.com/v2/<rocmIndex>/` | `stable` | Experimental RDNA 1 support, no torch/ROCm `--pre` |
-| `rdna2` | `v0.26.0` | `https://rocm.nightlies.amd.com/v2-staging/<rocmIndex>/` | `stable` | Experimental RDNA 2 support, torch uses `--pre` |
+| `stable` | `v0.27.0` | AMD ROCm 7.2.1 direct URLs | `stable` | Pinned release wheels tagged `cp312`; requires Python 3.12 |
+| `preview` | `master` | `https://rocm.nightlies.amd.com/whl-multi-arch/` | `optimized` | Promoted multi-arch wheel index; GPU selection via pip extras, not a per-family URL |
+| `nightly` | `master` | `https://rocm.nightlies.amd.com/whl-staging-multi-arch/` | `optimized` | Staging multi-arch index; same mechanism as preview, more volatile |
+| `legacy` | `master` | `https://rocm.nightlies.amd.com/v2/<rocmIndex>/` | `optimized` | Per-GPU-family v2 index (pre-multi-arch scheme) |
+| `legacy-staging` | `master` | `https://rocm.nightlies.amd.com/v2-staging/<rocmIndex>/` | `optimized` | Per-GPU-family v2-staging index; auto-switch target for gfx94X/gfx950 |
 
-`RocmRoll.Rocm.Resolve-RocmInstallPlan` handles the difference between direct URL installs and index-based installs:
+`RocmRoll.Rocm.Resolve-RocmInstallPlan` branches on the channel's `rocm.source` field into three shapes:
 
-- Direct URL channels install SDK and torch wheel URLs declared by the manifest.
-- Index channels build a ROCm index URL from `indexBase` plus the detected `rocmIndex`.
-- Index channels preinstall `torchDependencies` from PyPI before using the ROCm index.
-- A wheelhouse at `.cache\wheelhouse\<rocmIndex>\` is added with `--find-links` when it contains wheels.
+- **`directUrls`** (`stable`): installs SDK and torch wheel URLs declared directly by the manifest.
+- **`index`** (`legacy`, `legacy-staging`): builds a ROCm index URL from `indexBase` plus the detected family-level `rocmIndex` (e.g. `gfx110X-all`), and installs generic `torch`/`torchvision`/`torchaudio`/`rocm[libraries,devel]` package names from it.
+- **`multiArch`** (`preview`, `nightly`): uses a single fixed `indexUrl` (promoted `whl-multi-arch/` or staging `whl-staging-multi-arch/`, no per-family path segment) and substitutes a `{device}` template token in the manifest's `torchPackages`/`rocmPackages` with the exact resolved GPU chip id (e.g. `torch[device-gfx1100]`, `rocm[libraries,devel,device-gfx1100]`). This is required because the multi-arch `rocm-sdk-device-*` packages are published per exact chip, not per GPU family, unlike the `index` channels' per-family folders.
+
+Both `index` and `multiArch` channels share the same surrounding behavior:
+
+- Preinstall `torchDependencies` from PyPI before using the ROCm/whl-multi-arch index (the `--index-url` call replaces PyPI as the default index).
+- A wheelhouse cache (`.cache\wheelhouse\<rocmIndex>\` for `index`, `.cache\wheelhouse\<multiArchChip>\` for `multiArch`) is added with `--find-links` when it contains wheels.
 - `allowTorchPreRelease` and `allowRocmPreRelease` can be controlled separately by channel.
+
+`Test-RocmStateMatchesInstallPlan` treats a `multiArch` install as matching cached state only when both the channel's `rocmSource` *and* the resolved `rocmDeviceChip` are unchanged, so switching to a different exact GPU chip (e.g. moving an environment between two different RDNA 3 chips) correctly triggers reinstall even though the family-level `rocmIndex` didn't change.
+
+### Channel Aliases And Migration
+
+The dedicated `rdna1`/`rdna2` channels were removed when RDNA 1/2 gained multi-arch coverage. `RocmRoll.Config.Resolve-ChannelName` maps removed channel names to their replacements (`rdna1` → `preview`, `rdna2` → `preview`) and is called at every `channels.json` lookup chokepoint: `RocmRoll.Core.Invoke-FullInstall`, `RocmRoll.Rocm.Get-RocmChannelConfig` (covers repair), `RocmRoll.Launcher.Invoke-GenerateLaunchers`, and `RocmRoll.Repair.Invoke-RepairComfyUi`. Instances whose state still records an old channel therefore keep working; the canonical name is persisted on the next full install/update.
 
 ROCm validation uses `source\scripts\validate-rocm.py` through `RocmRoll.Rocm.Invoke-ValidateRocm`. It checks torch import, torch/HIP metadata, `torch.cuda.is_available()`, device count/name, and a simple GPU tensor operation.
 
@@ -256,6 +269,18 @@ gfx950   MI350 / MI355
 ```
 
 `--gfx` accepts these family keys or exact mapped values where supported by the detector.
+
+### Exact GPU Chip Resolution
+
+Each family above bundles one or more physical GPU chips (e.g. `gfx110X` covers chips `gfx1100`, `gfx1101`, `gfx1102`, `gfx1103`). The `index`-source channels (`legacy`, `legacy-staging`) only need the family-level `rocmIndex` because AMD publishes one wheel folder per family. The `multiArch`-source channels (`preview`, `nightly`) need the exact chip instead, because the multi-arch `rocm-sdk-device-*` packages are published per exact chip with no per-family bundle.
+
+Family entries also carry two optional capability flags consumed by the install auto-switch (see Install Pipeline): `stableSupported` and `multiArchSupported`, both defaulting to `true` when absent.
+
+Each family entry in `rocm-architectures.json` carries a `chips` array (`{ "id": "gfx1100", "devices": [...] }`) splitting its `devices` list by exact chip. `RocmRoll.Hardware.Resolve-GfxChip` mirrors the existing `Resolve-GfxFamily` fragment-matching logic against the flattened `chips[].devices` lists. `Invoke-GpuDetect` returns both `gfx`/`rocmIndex` (family, used by `index`/`directUrls` channels) and `multiArchChip` (exact chip, used by the `multiArch` channels) from the same detected or overridden device. When `--gfx` overrides to a family key without a live device match, `Get-DefaultChipForFamily` picks the family's first listed chip.
+
+`multiArchChip` is persisted in environment state (`.state\environments\environment-<name>.json`, `gpu.multiArchChip`) alongside `gpu.rocmIndex`, and is threaded through the same call paths as `rocmIndex`: full install (`RocmRoll.Core.Invoke-FullInstall`), repair (`RocmRoll.Repair.Resolve-RepairMultiArchChip`, mirroring `Resolve-RepairRocmIndex`), and launcher generation (`RocmRoll.Launcher.Invoke-GenerateLaunchers`, which reads `multiArchChip` instead of `rocmIndex` from state when the instance's channel is `multiArch`).
+
+> Chip-to-marketing-name mappings for RDNA 3/RDNA 4/CDNA 3/CDNA 4 families are high-confidence (they map 1:1 to well-documented desktop/datacenter SKUs). The RDNA 1 (`gfx101X`) and RDNA 2 (`gfx103X`) chip splits are lower-confidence best-effort mappings and should be cross-checked against AMD/ROCm's official gfx-target documentation before being relied on for those (already-experimental) families.
 
 ## Runtime And Environment Strategy
 
@@ -357,6 +382,7 @@ Profile commands:
 ```powershell
 rocmroll profile list
 rocmroll profile apply --instance rocm-stable
+rocmroll profile apply --instance rocm-stable --profile flash-attention
 rocmroll profile show --name optimized
 rocmroll profile create --name my-profile
 rocmroll profile remove --name my-profile
@@ -366,9 +392,13 @@ Built-in profile files currently include:
 
 | File | Intended profile | Notes |
 | --- | --- | --- |
-| `stable.json` | `stable` | Baseline profile; default for `stable`, `rdna1`, and `rdna2` |
+| `stable.json` | `stable` | Baseline profile; default for `stable` |
 | `stable-dynamic-vram.json` | `stable-dynamic-vram` | Baseline with `--enable-dynamic-vram` |
-| `optimized.json` | `optimized` | Performance profile; default for `nightly` and `preview` |
+| `optimized.json` | `optimized` | Performance profile; default for `preview`, `nightly`, `legacy`, and `legacy-staging` |
+| `flash-attention.json` | `flash-attention` | Flash-Attention Triton backend, MIOpen settings, dynamic VRAM; autotuning off |
+| `flash-attention-autotune.json` | `flash-attention-autotune` | Like `flash-attention` with `FLASH_ATTENTION_TRITON_AMD_AUTOTUNE=TRUE` |
+| `sage-attention.json` | `sage-attention` | SageAttention backend, MIOpen settings, dynamic VRAM; autotuning off |
+| `sage-attention-autotune.json` | `sage-attention-autotune` | Like `sage-attention` with `FLASH_ATTENTION_TRITON_AMD_AUTOTUNE=TRUE` |
 | `performance-autotune.json` | `performance-autotune` | Aggressive MIOpen/Triton autotuning |
 | `experimental.json` | local experimental content | The current file contains an object named `optimized`; do not treat it as a distinct built-in profile without checking the file |
 
@@ -391,6 +421,8 @@ Fixed launch behavior includes:
 - Launch logs under `logs\launch`
 
 `rocmroll instance launch --profile NAME` passes the override through to the generated launcher. Old launchers that do not support profile arguments are rejected with a repair hint.
+
+`rocmroll profile apply --instance NAME [--profile NAME]` regenerates the launcher for the instance and refreshes the ComfyUI Desktop entry with the profile's `launchArgs` and `env`. When `--profile` is omitted the channel default is used.
 
 ## State, Logs, Locks, And Cache
 

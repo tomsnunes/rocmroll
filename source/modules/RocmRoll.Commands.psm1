@@ -955,7 +955,7 @@ function Invoke-RocmRollEnvCommand {
 function Invoke-RocmRollProfileCommand {
     param([Parameter(Mandatory)][object]$Context)
     Import-RocmRollCommandModules -ModulesDir $Context.ModulesDir -Names @(
-        'RocmRoll.Profiles','RocmRoll.State','RocmRoll.Launcher'
+        'RocmRoll.Profiles','RocmRoll.State','RocmRoll.Launcher','RocmRoll.ComfyDesktop'
     )
     $cfg = Get-Config
     switch ($Context.SubCommand) {
@@ -995,9 +995,34 @@ function Invoke-RocmRollProfileCommand {
             if ($envState -and $envState.PSObject.Properties['gpu'] -and $envState.gpu -and $envState.gpu.PSObject.Properties['gfx']) {
                 $gfx = [string]$envState.gpu.gfx
             }
-            $profileName = Resolve-ChannelDefaultProfile -Channel $channel -Config $cfg
+
+            $profileName = if ($Context.ProfileName) {
+                $profilePath = Join-Path $cfg.ProfilesFolder "$($Context.ProfileName).json"
+                if (-not (Test-Path -LiteralPath $profilePath -PathType Leaf)) {
+                    Write-Host ''
+                    Write-Host "  ERROR  Unknown profile: '$($Context.ProfileName)'" -ForegroundColor Red
+                    Write-Host "  Run 'rocmroll profile list' to see available profiles." -ForegroundColor DarkGray
+                    Write-Host ''
+                    exit 1
+                }
+                $Context.ProfileName
+            } else {
+                Resolve-ChannelDefaultProfile -Channel $channel -Config $cfg
+            }
+
+            $profileObj = Get-ProfileObject -Name $profileName -Config $cfg
+
             Invoke-GenerateLaunchers -InstanceName $Context.InstanceName -EnvironmentName $environment `
                 -GfxVersion $gfx -ProfileName $profileName -Channel $channel
+
+            $existingDesktopId = if ($state.PSObject.Properties['comfyDesktopId'] -and $state.comfyDesktopId) { [string]$state.comfyDesktopId } else { '' }
+            $desktopId = Register-ComfyDesktopInstance -InstanceName $Context.InstanceName `
+                -InstanceState $state -EnvironmentState $envState `
+                -GfxFamily $gfx -ExistingId $existingDesktopId -ProfileObject $profileObj
+            if ($desktopId) {
+                Set-InstanceComfyDesktopId -Name $Context.InstanceName -ComfyDesktopId $desktopId
+            }
+
             Write-Host ''
             Write-Host "  Applied profile '$profileName' to instance '$($Context.InstanceName)'." -ForegroundColor Green
             Write-Host ''

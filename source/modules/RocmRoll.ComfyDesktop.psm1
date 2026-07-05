@@ -14,6 +14,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Encoding.psm1')
+Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1')
 
 # ---------------------------------------------------------------------------
 # Path helpers
@@ -93,13 +94,15 @@ function New-ComfyDesktopEntry {
     <#
     Builds the installations.json entry object for a ROCmRoll instance.
     When ExistingId is provided the same id is reused (update path).
+    When ProfileObject is provided its launchArgs and env are used instead of the hardcoded defaults.
     #>
     param(
         [string]$InstanceName,
         [object]$InstanceState,
         [object]$EnvironmentState,
         [string]$GfxFamily    = '',
-        [string]$ExistingId   = ''
+        [string]$ExistingId   = '',
+        [object]$ProfileObject = $null
     )
 
     $cfg = Get-Config
@@ -127,19 +130,31 @@ function New-ComfyDesktopEntry {
     }
     $shortCommit = if ($commit.Length -ge 8) { $commit.Substring(0, 8) } else { $commit }
 
+    $isLegacy = $GfxFamily -imatch '^gfx(?:101X|103X)$'
+
     # --- launchArgs string ---
-    $launchArgs = (
-        #"--user-directory $($cfg.UserDataFolder)",
-        "--input-directory $($cfg.InputFolder)",
-        "--output-directory $($cfg.OutputFolder)",
-        "--disable-api-nodes",
-        "--disable-smart-memory",
-        "--disable-pinned-memory",
-        "--preview-method auto",
-        "--use-sage-attention",
-        "--enable-manager-legacy-ui",
-        "--enable-dynamic-vram"
-    ) -join ' '
+    $launchArgs = if ($ProfileObject) {
+        $parts = @(
+            "--input-directory $($cfg.InputFolder)",
+            "--output-directory $($cfg.OutputFolder)"
+        ) + @($ProfileObject.launchArgs)
+        if ($isLegacy -and $ProfileObject.PSObject.Properties['legacyGpuOverrides'] -and $ProfileObject.legacyGpuOverrides -and $ProfileObject.legacyGpuOverrides.PSObject.Properties['launchArgs'] -and $ProfileObject.legacyGpuOverrides.launchArgs) {
+            $parts = $parts + @($ProfileObject.legacyGpuOverrides.launchArgs)
+        }
+        $parts -join ' '
+    } else {
+        (
+            "--input-directory $($cfg.InputFolder)",
+            "--output-directory $($cfg.OutputFolder)",
+            "--disable-api-nodes",
+            "--disable-smart-memory",
+            "--disable-pinned-memory",
+            "--preview-method auto",
+            "--use-sage-attention",
+            "--enable-manager-legacy-ui",
+            "--enable-dynamic-vram"
+        ) -join ' '
+    }
 
     # --- envVars ---
     $sitePackages  = if ($envFolder) { Join-Path $envFolder 'Lib\site-packages' } else { '' }
@@ -170,16 +185,6 @@ function New-ComfyDesktopEntry {
         $envVars['HSA_OVERRIDE_GFX_VERSION'] = $hsaVersion
     }
 
-    # Architecture-specific flags
-    $isLegacy = $GfxFamily -imatch '^gfx(?:101X|103X)$'
-    if ($isLegacy) {
-        $envVars['TORCH_BACKENDS_CUDA_FLASH_SDP_ENABLED']    = '0'
-        $envVars['TORCH_BACKENDS_CUDA_MEM_EFF_SDP_ENABLED']  = '0'
-        $envVars['TORCH_BACKENDS_CUDA_MATH_SDP_ENABLED']     = '1'
-    } else {
-        $envVars['TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL']  = '1'
-    }
-
     # MIOpen / ROCBlas paths (only when devel folder is present)
     if ($rocmSdkDevel -and (Test-Path $rocmSdkDevel)) {
         $envVars['MIOPEN_SYSTEM_DB_PATH']   = Join-Path $rocmSdkDevel 'bin'
@@ -187,18 +192,37 @@ function New-ComfyDesktopEntry {
         $envVars['ROCBLAS_TENSILE_LIBPATH'] = Join-Path $rocmSdkDevel 'bin\rocblas\library'
     }
 
-    $envVars['COMFYUI_ENABLE_MIOPEN']             = '0'
-    $envVars['FLASH_ATTENTION_TRITON_AMD_ENABLE']  = 'TRUE'
-    $envVars['FLASH_ATTENTION_TRITON_AMD_AUTOTUNE']= 'TRUE'
-    $envVars['MIOPEN_FIND_ENFORCE']                = '1'
-    $envVars['MIOPEN_FIND_MODE']                   = '2'
-    $envVars['MIOPEN_DEBUG_DISABLE_FIND_DB']       = '0'
-    $envVars['MIOPEN_SEARCH_CUTOFF']               = '1'
-    $envVars['MIOPEN_ENABLE_LOGGING']              = '0'
-    $envVars['MIOPEN_LOG_LEVEL']                   = '0'
-    $envVars['MIOPEN_ENABLE_LOGGING_CMD']          = '0'
-    $envVars['TRITON_PRINT_AUTOTUNING']            = '0'
-    $envVars['TRITON_CACHE_AUTOTUNING']            = '0'
+    if ($ProfileObject) {
+        # Merge profile env on top of infrastructure vars; profile is authoritative for its own keys
+        if ($ProfileObject.PSObject.Properties['env'] -and $ProfileObject.env) {
+            foreach ($kv in $ProfileObject.env.PSObject.Properties) { $envVars[$kv.Name] = $kv.Value }
+        }
+        # Apply legacy GPU env overrides from the profile
+        if ($isLegacy -and $ProfileObject.PSObject.Properties['legacyGpuOverrides'] -and $ProfileObject.legacyGpuOverrides -and $ProfileObject.legacyGpuOverrides.PSObject.Properties['env'] -and $ProfileObject.legacyGpuOverrides.env) {
+            foreach ($kv in $ProfileObject.legacyGpuOverrides.env.PSObject.Properties) { $envVars[$kv.Name] = $kv.Value }
+        }
+    } else {
+        # Hardcoded defaults when no profile is provided
+        if ($isLegacy) {
+            $envVars['TORCH_BACKENDS_CUDA_FLASH_SDP_ENABLED']    = '0'
+            $envVars['TORCH_BACKENDS_CUDA_MEM_EFF_SDP_ENABLED']  = '0'
+            $envVars['TORCH_BACKENDS_CUDA_MATH_SDP_ENABLED']     = '1'
+        } else {
+            $envVars['TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL']  = '1'
+        }
+        $envVars['COMFYUI_ENABLE_MIOPEN']             = '0'
+        $envVars['FLASH_ATTENTION_TRITON_AMD_ENABLE']  = 'TRUE'
+        $envVars['FLASH_ATTENTION_TRITON_AMD_AUTOTUNE']= 'TRUE'
+        $envVars['MIOPEN_FIND_ENFORCE']                = '1'
+        $envVars['MIOPEN_FIND_MODE']                   = '2'
+        $envVars['MIOPEN_DEBUG_DISABLE_FIND_DB']       = '0'
+        $envVars['MIOPEN_SEARCH_CUTOFF']               = '1'
+        $envVars['MIOPEN_ENABLE_LOGGING']              = '0'
+        $envVars['MIOPEN_LOG_LEVEL']                   = '0'
+        $envVars['MIOPEN_ENABLE_LOGGING_CMD']          = '0'
+        $envVars['TRITON_PRINT_AUTOTUNING']            = '0'
+        $envVars['TRITON_CACHE_AUTOTUNING']            = '0'
+    }
 
     return [pscustomobject][ordered]@{
         id               = $id
@@ -231,13 +255,15 @@ function Register-ComfyDesktopInstance {
     Returns the entry id on success, or $null when Desktop is not available.
 
     Pass ExistingId to update an existing entry in place instead of appending.
+    Pass ProfileObject to have the entry reflect a specific profile's launchArgs and env.
     #>
     param(
         [string]$InstanceName,
         [object]$InstanceState,
         [object]$EnvironmentState,
-        [string]$GfxFamily  = '',
-        [string]$ExistingId = ''
+        [string]$GfxFamily     = '',
+        [string]$ExistingId    = '',
+        [object]$ProfileObject = $null
     )
 
     if (-not (Test-ComfyDesktopAvailable)) {
@@ -250,7 +276,7 @@ function Register-ComfyDesktopInstance {
     {
         $desktopEntry = New-ComfyDesktopEntry -InstanceName $InstanceName `
                             -InstanceState $InstanceState -EnvironmentState $EnvironmentState `
-                            -GfxFamily $GfxFamily -ExistingId $ExistingId
+                            -GfxFamily $GfxFamily -ExistingId $ExistingId -ProfileObject $ProfileObject
 
         if ($null -eq $desktopEntry)
         {

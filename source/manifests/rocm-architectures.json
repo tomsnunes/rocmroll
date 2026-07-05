@@ -2,7 +2,11 @@
   "gfx120X": {
     "index": "gfx120X-all",
     "architecture": "RDNA 4",
-    "devices": ["RX 9060", "RX 9070", "RX 9070 XT"],
+    "devices": ["RX 9060", "RX 9060 XT", "RX 9070", "RX 9070 XT", "RX 9070 GRE"],
+    "chips": [
+      { "id": "gfx1201", "devices": ["RX 9070", "RX 9070 XT", "RX 9070 GRE"] },
+      { "id": "gfx1200", "devices": ["RX 9060", "RX 9060 XT"] }
+    ],
     "requiresPreRelease": true,
     "supported": true
   },
@@ -10,6 +14,9 @@
     "index": "gfx1150",
     "architecture": "RDNA 3.5 / Strix Point",
     "devices": ["Radeon 890M"],
+    "chips": [
+      { "id": "gfx1150", "devices": ["Radeon 890M"] }
+    ],
     "requiresPreRelease": true,
     "supported": true
   },
@@ -17,6 +24,9 @@
     "index": "gfx1151",
     "architecture": "RDNA 3.5 / Strix Halo",
     "devices": ["Radeon 8060S", "Radeon 8050S", "Radeon 8040S", "Radeon 880M"],
+    "chips": [
+      { "id": "gfx1151", "devices": ["Radeon 8060S", "Radeon 8050S", "Radeon 8040S", "Radeon 880M"] }
+    ],
     "requiresPreRelease": true,
     "supported": true
   },
@@ -24,6 +34,9 @@
     "index": "gfx1152",
     "architecture": "RDNA 3.5 / Krackan Point",
     "devices": ["Radeon 860M", "Radeon 840M", "Radeon 820M"],
+    "chips": [
+      { "id": "gfx1152", "devices": ["Radeon 860M", "Radeon 840M", "Radeon 820M"] }
+    ],
     "requiresPreRelease": true,
     "supported": true
   },
@@ -31,6 +44,9 @@
     "index": "gfx1153",
     "architecture": "RDNA 3.5",
     "devices": [],
+    "chips": [
+      { "id": "gfx1153", "devices": [] }
+    ],
     "requiresPreRelease": true,
     "supported": true
   },
@@ -38,20 +54,40 @@
     "index": "gfx110X-all",
     "architecture": "RDNA 3",
     "devices": ["RX 7900", "W7900", "W7800", "RX 7800", "RX 7700", "W7700", "RX 7700S", "RX 7650", "RX 7600", "W7600", "W7500", "RX 7400", "W7400", "Radeon 780M", "Radeon 760M", "Radeon 740M"],
+    "chips": [
+      { "id": "gfx1100", "devices": ["RX 7900", "W7900", "W7800"] },
+      { "id": "gfx1101", "devices": ["RX 7800", "RX 7700", "W7700"] },
+      { "id": "gfx1102", "devices": ["RX 7700S", "RX 7650", "RX 7600", "W7600", "W7500", "RX 7400", "W7400"] },
+      { "id": "gfx1103", "devices": ["Radeon 780M", "Radeon 760M", "Radeon 740M"] }
+    ],
     "requiresPreRelease": true,
     "supported": true
   },
   "gfx103X": {
     "index": "gfx103X-all",
     "architecture": "RDNA 2",
+    "stableSupported": false,
     "devices": ["RX 6950", "RX 6900", "RX 6800", "W6800", "V620", "RX 6750", "RX 6700", "RX 6800M", "RX 6700M", "RX 6800S", "RX 6700S", "RX 6650", "RX 6600", "W6600", "RX 6650M", "RX 6600M", "RX 6600S", "RX 6500", "W6500", "RX 6500M"],
+    "chips": [
+      { "id": "gfx1030", "devices": ["RX 6950", "RX 6900", "RX 6800", "W6800", "V620"] },
+      { "id": "gfx1031", "devices": ["RX 6750", "RX 6700", "RX 6800M", "RX 6700M"] },
+      { "id": "gfx1032", "devices": ["RX 6650", "RX 6600", "W6600", "RX 6650M", "RX 6600M", "RX 6600S"] },
+      { "id": "gfx1034", "devices": ["RX 6500", "W6500", "RX 6500M"] },
+      { "id": "gfx1035", "devices": ["RX 6800S"] },
+      { "id": "gfx1036", "devices": ["RX 6700S"] }
+    ],
     "requiresPreRelease": true,
     "supported": true
   },
   "gfx101X": {
     "index": "gfx101X-dgpu",
     "architecture": "RDNA 1",
+    "stableSupported": false,
     "devices": ["RX 5700", "RX 5600", "RX 5500", "Radeon Pro V520"],
+    "chips": [
+      { "id": "gfx1010", "devices": ["RX 5700", "RX 5600", "Radeon Pro V520"] },
+      { "id": "gfx1012", "devices": ["RX 5500"] }
+    ],
     "requiresPreRelease": true,
     "supported": true
   },
@@ -59,20 +95,31 @@
     "index": "gfx90X-dcgpu",
     "architecture": "Radeon Pro VII",
     "devices": ["Radeon Pro VII"],
+    "chips": [
+      { "id": "gfx906", "devices": ["Radeon Pro VII"] }
+    ],
     "requiresPreRelease": false,
     "supported": true
   },
   "gfx94X": {
     "index": "gfx94X-dcgpu",
     "architecture": "MI300 / MI325",
+    "multiArchSupported": false,
     "devices": ["MI300A", "MI300X", "MI325X"],
+    "chips": [
+      { "id": "gfx942", "devices": ["MI300A", "MI300X", "MI325X"] }
+    ],
     "requiresPreRelease": false,
     "supported": true
   },
   "gfx950": {
     "index": "gfx950-dcgpu",
     "architecture": "MI350 / MI355",
+    "multiArchSupported": false,
     "devices": ["MI350X", "MI355X"],
+    "chips": [
+      { "id": "gfx950", "devices": ["MI350X", "MI355X"] }
+    ],
     "requiresPreRelease": true,
     "supported": true
   }

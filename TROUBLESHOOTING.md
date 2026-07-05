@@ -131,17 +131,16 @@ ERROR ROCMROLL-ROCM-003: pip install failed for torch.
 
 **Symptom:** Install completes (possibly with a warning that the GPU was not visible during validation), but `torch.cuda.is_available()` is `False` and ComfyUI runs on CPU. Affects RX 6000 series (RDNA 2, `gfx103X`) and RX 5000 series (RDNA 1, `gfx101X`).
 
-**Cause:** AMD's official ROCm Windows release wheels (the stable channel's direct URLs) only support RDNA 3 and RDNA 4 GPUs. They install without error on RDNA 1/2 systems but never detect the GPU. Additionally, AMD's regular nightly index (`v2`) does not publish torch wheels for these families - they exist only on the staging nightly index (`v2-staging`).
+**Cause:** AMD's official ROCm Windows release wheels (the stable channel's direct URLs) only support RDNA 3 and RDNA 4 GPUs. They install without error on RDNA 1/2 systems but never detect the GPU.
 
-**Fix (automatic):** ROCmRoll routes `gfx103X` and `gfx101X` to the staging nightly index on both channels via the `sourceOverride` key in `source\manifests\rocm-architectures.json`. If your instance was installed before this fix, re-run the install (it converges) or repair the ROCm component:
+**Fix (automatic):** RDNA 1/2 support ships through AMD's multi-arch nightly wheels. These families are marked `stableSupported: false` in `source\manifests\rocm-architectures.json`, so selecting `--channel stable` automatically switches the install to the `preview` channel (whl-multi-arch index with exact-chip packages such as `torch[device-gfx1030]`). If your instance was installed before this behavior existed - including with the removed `rdna1`/`rdna2` channels, which now resolve to `preview` - re-run the install (it converges) or repair the ROCm component:
 
 ```powershell
-.\rocmroll.bat instance repair --name rocm-stable
-.\rocmroll.bat instance repair --name rocm-stable
+.\rocmroll.bat instance repair --name rocm-stable --rocm
 .\rocmroll.bat rocm validate --instance rocm-stable
 ```
 
-**Note:** Staging nightly wheels are pre-release builds and inherit nightly volatility, even on the stable channel. This is currently the only way to get GPU acceleration on RDNA 1/2 under Windows.
+**Note:** Multi-arch nightly wheels are pre-release builds and inherit nightly volatility, even when the install started from the stable channel. This is currently the only way to get GPU acceleration on RDNA 1/2 under Windows.
 
 ---
 
