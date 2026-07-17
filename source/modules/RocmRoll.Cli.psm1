@@ -88,7 +88,7 @@ function Get-RocmRollCommandDefinitions {
             }
         }
         instance = [ordered]@{
-            Name = 'instance'; Synopsis = 'Manage ComfyUI instances'; Usage = 'rocmroll instance <help|list|info|install|update|remove|launch|repair>'
+            Name = 'instance'; Synopsis = 'Manage ComfyUI instances (imperative)'; Usage = 'rocmroll instance <help|list|info|install|update|remove|launch|repair>'
             SubCommands = [ordered]@{
                 help = New-CliSubCommand -Name 'help' -Synopsis 'Show instance help' -Usage 'rocmroll instance help' -Handler 'ShowHelp'
                 list = New-CliSubCommand -Name 'list' -Synopsis 'List current instances' -Usage 'rocmroll instance list [--workspace NAME|--all] [--channel CHANNEL]' -Options @(
@@ -132,10 +132,63 @@ function Get-RocmRollCommandDefinitions {
                     New-CliOption -Name 'url' -Value -Meta 'HOST' -Desc 'Set custom ComfyUI hostname'
                     New-CliOption -Name 'port' -Value -Meta 'PORT' -Default '8188' -Desc 'Set custom ComfyUI port'
                 ) -Examples @('rocmroll instance launch', 'rocmroll instance launch --name rocm-stable --port 8189') -Handler 'Invoke-RocmRollInstanceCommand'
-                repair = New-CliSubCommand -Name 'repair' -Synopsis 'Repair an instance or components' -Usage 'rocmroll instance repair --name NAME [--all|--environment|--rocm|--comfyui|--patches]' -Options (@(
+                repair = New-CliSubCommand -Name 'repair' -Synopsis 'Repair an instance or components' -Usage 'rocmroll instance repair --name NAME [--all|--environment|--rocm|--comfyui|--patches] [--force]' -Options (@(
                     $nameReq
                     $workspaceOpt
+                    New-CliOption -Name 'force' -Desc 'Skip confirmation when replacing custom/drifted managed files'
                 ) + $componentOpts) -Examples @('rocmroll instance repair --name rocm-stable') -Handler 'Invoke-RocmRollInstanceCommand'
+            }
+        }
+        plan = [ordered]@{
+            Name = 'plan'; Synopsis = 'Show planned changes for a declarative instance definition'; Usage = 'rocmroll plan (--file PATH|--name NAME) [--output PATH] [--json]'
+            Handler = 'Invoke-RocmRollPlanCommand'; DefaultHandler = 'Invoke-RocmRollPlanCommand'; Options = @(
+                $nameOpt
+                $workspaceOpt
+                New-CliOption -Name 'file' -Value -Meta 'PATH' -Desc 'Path to a ComfyUIInstance YAML definition'
+                New-CliOption -Name 'output' -Value -Meta 'PATH' -Desc 'Write the plan as JSON to this path'
+            ); Examples = @('rocmroll plan --file .\overlays\rocm-stable\rocm-stable.yaml', 'rocmroll plan --name rocm-stable')
+            SubCommands = [ordered]@{
+                help = New-CliSubCommand -Name 'help' -Synopsis 'Show plan help' -Usage 'rocmroll plan help' -Handler 'ShowHelp'
+            }
+        }
+        apply = [ordered]@{
+            Name = 'apply'; Synopsis = 'Apply a declarative instance definition (create or update, using the same pipeline as instance install/update)'; Usage = 'rocmroll apply (--file PATH|--name NAME) [--plan PATH] [--auto-approve] [--allow-destructive] [--dry-run]'
+            Handler = 'Invoke-RocmRollApplyCommand'; DefaultHandler = 'Invoke-RocmRollApplyCommand'; Options = @(
+                $nameOpt
+                $workspaceOpt
+                New-CliOption -Name 'file' -Value -Meta 'PATH' -Desc 'Path to a ComfyUIInstance YAML definition'
+                New-CliOption -Name 'plan' -Value -Meta 'PATH' -Desc 'Apply a previously saved plan JSON file instead of regenerating one'
+                New-CliOption -Name 'auto-approve' -Desc 'Skip interactive confirmation for non-destructive actions'
+                New-CliOption -Name 'allow-destructive' -Desc 'Allow destructive actions (also settable via updatePolicy.allowDestructive)'
+                New-CliOption -Name 'dry-run' -Desc 'Show what apply would do without changing anything'
+            ); Examples = @('rocmroll apply --file .\overlays\rocm-stable\rocm-stable.yaml', 'rocmroll apply --name rocm-stable --auto-approve', 'rocmroll apply --plan .\.state\plans\rocm-stable.plan.json --file .\overlays\rocm-stable\rocm-stable.yaml')
+            SubCommands = [ordered]@{
+                help = New-CliSubCommand -Name 'help' -Synopsis 'Show apply help' -Usage 'rocmroll apply help' -Handler 'ShowHelp'
+            }
+        }
+        destroy = [ordered]@{
+            Name = 'destroy'; Synopsis = 'Destroy an instance (checkout, environment, launchers, state) - shared assets and overlays are preserved'; Usage = 'rocmroll destroy (--file PATH|--name NAME) [--auto-approve] [--dry-run] [--json]'
+            Handler = 'Invoke-RocmRollDestroyCommand'; DefaultHandler = 'Invoke-RocmRollDestroyCommand'; Options = @(
+                $nameOpt
+                $workspaceOpt
+                New-CliOption -Name 'file' -Value -Meta 'PATH' -Desc 'Path to a ComfyUIInstance YAML definition'
+                New-CliOption -Name 'auto-approve' -Desc 'Skip the typed-name confirmation prompt'
+                New-CliOption -Name 'dry-run' -Desc 'Show what would be destroyed without changing anything'
+            ); Examples = @('rocmroll destroy --name rocm-stable', 'rocmroll destroy --name rocm-stable --dry-run', 'rocmroll destroy --name rocm-stable --auto-approve')
+            SubCommands = [ordered]@{
+                help = New-CliSubCommand -Name 'help' -Synopsis 'Show destroy help' -Usage 'rocmroll destroy help' -Handler 'ShowHelp'
+            }
+        }
+        import = [ordered]@{
+            Name = 'import'; Synopsis = 'Generate a declarative YAML definition from an existing instance'; Usage = 'rocmroll import --name NAME [--output PATH] [--force]'
+            Handler = 'Invoke-RocmRollImportCommand'; DefaultHandler = 'Invoke-RocmRollImportCommand'; Options = @(
+                $nameReq
+                $workspaceOpt
+                New-CliOption -Name 'output' -Value -Meta 'PATH' -Desc 'Write the definition to this path instead of overlays\NAME\NAME.yaml'
+                New-CliOption -Name 'force' -Desc 'Overwrite an existing definition file'
+            ); Examples = @('rocmroll import --name rocm-stable')
+            SubCommands = [ordered]@{
+                help = New-CliSubCommand -Name 'help' -Synopsis 'Show import help' -Usage 'rocmroll import help' -Handler 'ShowHelp'
             }
         }
         workspace = [ordered]@{
@@ -515,8 +568,14 @@ function New-CliContext {
         PatchId             = Get-CliValue -ParsedOptions $parsedOptions -Name 'patch-id'
         Url                 = Get-CliValue -ParsedOptions $parsedOptions -Name 'url'
         AddUrl              = Get-CliValue -ParsedOptions $parsedOptions -Name 'add'
+        DefinitionFile      = Get-CliValue -ParsedOptions $parsedOptions -Name 'file'
+        PlanFile            = Get-CliValue -ParsedOptions $parsedOptions -Name 'plan'
+        OutputPath          = Get-CliValue -ParsedOptions $parsedOptions -Name 'output'
 
         FlagForce           = Test-CliFlag -ParsedOptions $parsedOptions -Name 'force'
+        FlagAutoApprove     = Test-CliFlag -ParsedOptions $parsedOptions -Name 'auto-approve'
+        FlagAllowDestructive= Test-CliFlag -ParsedOptions $parsedOptions -Name 'allow-destructive'
+        FlagDryRun          = Test-CliFlag -ParsedOptions $parsedOptions -Name 'dry-run'
         FlagQuiet           = Test-CliFlag -ParsedOptions $parsedOptions -Name 'quiet'
         FlagVerbose         = $flagVerbose
         FlagDebug           = $flagDebug
@@ -698,8 +757,9 @@ function Test-RocmRollProfileName {
 
     Import-Module (Join-Path $ModulesDir 'RocmRoll.Profiles.psm1') -Global
     $cfg = Get-Config
-    $profilePath = Join-Path $cfg.ProfilesFolder "$ProfileName.json"
-    if (-not (Test-Path -LiteralPath $profilePath -PathType Leaf)) {
+    try {
+        Get-ProfilePath -Name $ProfileName -Config $cfg | Out-Null
+    } catch {
         Write-Host ''
         Write-Host "  ERROR  Unknown profile: '$ProfileName'" -ForegroundColor Red
         Write-Host "  Run 'rocmroll profile list' to see available profiles." -ForegroundColor DarkGray
@@ -757,6 +817,10 @@ function Invoke-RocmRollCommand {
         'Invoke-RocmRollPatchCommand'     { Invoke-RocmRollPatchCommand -Context $Context }
         'Invoke-RocmRollWorkspaceCommand' { Invoke-RocmRollWorkspaceCommand -Context $Context }
         'Invoke-RocmRollHelpCommand'      { Invoke-RocmRollHelpCommand -Context $Context }
+        'Invoke-RocmRollPlanCommand'      { Invoke-RocmRollPlanCommand -Context $Context }
+        'Invoke-RocmRollApplyCommand'     { Invoke-RocmRollApplyCommand -Context $Context }
+        'Invoke-RocmRollDestroyCommand'   { Invoke-RocmRollDestroyCommand -Context $Context }
+        'Invoke-RocmRollImportCommand'    { Invoke-RocmRollImportCommand -Context $Context }
         default {
             Show-RocmRollHelp -Command $Context.CommandPath
             exit 0

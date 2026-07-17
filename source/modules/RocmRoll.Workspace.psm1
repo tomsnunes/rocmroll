@@ -53,7 +53,7 @@ function Get-WorkspaceList {
             $obj = Get-Content $f.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
             $result += [PSCustomObject]@{
                 Name        = $f.BaseName
-                Description = if ($obj.description) { $obj.description } else { '' }
+                Description = if ($obj.PSObject.Properties['description'] -and $obj.description) { $obj.description } else { '' }
                 IsActive    = ($f.BaseName -ieq $active)
                 Object      = $obj
             }
