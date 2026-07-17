@@ -165,6 +165,21 @@ function Read-InstanceDefinition {
 
     # @() at the call site too - an empty-list return can still collapse to $null without it.
     $warnings = @(Get-InstanceDefinitionWarnings -SpecNode (Get-YamlLiteValue -Node $doc -Path 'spec'))
+
+    # The file-location fields below are part of the schema for forward
+    # compatibility, but plan/apply/install currently always use the fixed
+    # overlays\<name>\ layout - warn instead of silently ignoring a custom one.
+    $fileLocationFields = @(
+        @{ Field = 'spec.modelPaths.overlayPath'; Value = $overlayPathRaw;   Default = "overlays/$name/instance/extra_model_paths.yaml" },
+        @{ Field = 'spec.customNodes.file';       Value = $customNodesFile;  Default = "overlays/$name/instance/custom_nodes.json" },
+        @{ Field = 'spec.requirements.file';      Value = $requirementsFile; Default = "overlays/$name/environment/requirements.txt" }
+    )
+    foreach ($fileField in $fileLocationFields) {
+        if (([string]$fileField.Value -replace '\\', '/') -ne $fileField.Default) {
+            $warnings += "$($fileField.Field) is set to '$($fileField.Value)', but custom file locations are not supported yet - the default '$($fileField.Default)' will be used instead."
+        }
+    }
+
     $contentHash = Get-RocmRollStringHash -Content $rawContent
 
     return [pscustomobject]@{

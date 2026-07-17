@@ -26,6 +26,10 @@ function Convert-YamlLiteScalar {
     $value = $Raw.Trim()
     if ($value.Length -eq 0) { return $null }
 
+    # A value that is nothing but an inline comment ('key: # note') means
+    # the same as no value at all - not the literal string '# note'.
+    if ($value.StartsWith('#')) { return $null }
+
     if ($value.Length -ge 2 -and $value.StartsWith('"') -and $value.EndsWith('"')) {
         return $value.Substring(1, $value.Length - 2)
     }
@@ -116,7 +120,10 @@ function ConvertFrom-YamlLite {
         $parent = $parentFrame.Node
 
         $scalarValue = Convert-YamlLiteScalar -Raw $entry.Value
-        if ($null -eq $scalarValue -and [string]::IsNullOrWhiteSpace($entry.Value)) {
+        # A comment-only value ('key: # note') behaves exactly like a bare
+        # 'key:' - it may open a nested mapping on the following lines.
+        $valueIsBlank = [string]::IsNullOrWhiteSpace($entry.Value) -or $entry.Value.TrimStart().StartsWith('#')
+        if ($null -eq $scalarValue -and $valueIsBlank) {
             $child = [ordered]@{}
             $parent[$entry.Key] = $child
             $stack.Add([pscustomobject]@{ Indent = $entry.Indent; Node = $child }) | Out-Null

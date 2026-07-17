@@ -140,7 +140,7 @@ Validation rules (`RocmRoll.InstanceDefinition.Read-InstanceDefinition`):
 - `spec.profile` may be empty; the channel default profile applies at launch/apply time.
 - `spec.modelPaths.preserveOnUpdate` defaults to `true`.
 - `spec.modelPaths.repairPolicy` defaults to `confirm`.
-- `spec.modelPaths.overlayPath` and `spec.customNodes.file` default to `overlays\<name>\instance\...` if omitted; `spec.requirements.file` defaults to `overlays\<name>\environment\requirements.txt`.
+- `spec.modelPaths.overlayPath` and `spec.customNodes.file` default to `overlays\<name>\instance\...` if omitted; `spec.requirements.file` defaults to `overlays\<name>\environment\requirements.txt`. These three fields are accepted for forward compatibility only: plan/apply/install always use the fixed `overlays\<name>\` layout, and setting a non-default value produces a warning.
 - Fields not recognized by the schema produce a warning (printed before the plan/apply/destroy output), not a fatal error.
 
 ## YAML Subset Limitations
