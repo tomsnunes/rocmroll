@@ -30,6 +30,8 @@ When something goes wrong, always run diagnostics first:
 - [Python Runtime Errors](#python-runtime-errors)
 - [Custom Node Install Failures](#custom-node-install-failures)
 - [Nightly Channel Breaks](#nightly-channel-breaks)
+- [extra_model_paths.yaml Is Not Regenerated](#extra_model_pathsyaml-is-not-regenerated)
+- [Repair Asks to Confirm Before Replacing a Managed File](#repair-asks-to-confirm-before-replacing-a-managed-file)
 
 ---
 
@@ -475,6 +477,54 @@ This re-downloads (or reuses cached) Python archives and rebuilds the runtime fr
 
 ```powershell
 .\rocmroll.bat doctor --instance rocm-nightly --json
+```
+
+---
+
+## extra_model_paths.yaml Is Not Regenerated
+
+**Symptom:** After `instance update` or `comfyui update`, `extra_model_paths.yaml` still has old/edited content instead of the current template or overlay.
+
+**This is expected.** ROCmRoll preserves an existing `extra_model_paths.yaml` during update so it never silently discards a hand-edited file. You'll see:
+
+```text
+Preserving existing extra_model_paths.yaml during update: <path>
+```
+
+**To force it back to the ROCmRoll-managed version:**
+
+```powershell
+.\rocmroll.bat instance repair --name rocm-stable --comfyui --force
+```
+
+**To check whether it has drifted from what ROCmRoll last generated, without changing anything:**
+
+```powershell
+.\rocmroll.bat plan --name rocm-stable
+```
+
+Look for a `modelPaths.extra_model_paths` action other than `NOOP`/`PRESERVE`.
+
+See [docs/declarative-instances.md](docs/declarative-instances.md) for the full preserve/overlay/repair behavior.
+
+---
+
+## Repair Asks to Confirm Before Replacing a Managed File
+
+**Symptom:**
+
+```text
+extra_model_paths.yaml is 'drifted' for instance 'rocm-stable':
+    ...
+Replace it with the ROCmRoll-managed version? [y/N]
+```
+
+**Cause:** `instance repair --comfyui` detected that `extra_model_paths.yaml` either has no ROCmRoll record (`custom-unknown`) or no longer matches the content ROCmRoll last wrote (`drifted`). Repair asks before overwriting it so it never destroys hand-edited model paths.
+
+**Fix:** Answer `y` to replace it with the managed version, or `N` to keep your edits. To skip the prompt in scripts/CI, pass `--force`:
+
+```powershell
+.\rocmroll.bat instance repair --name rocm-stable --comfyui --force
 ```
 
 ---
