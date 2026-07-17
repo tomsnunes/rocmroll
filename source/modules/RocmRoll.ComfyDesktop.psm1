@@ -173,11 +173,17 @@ function New-ComfyDesktopEntry {
         HIP_VISIBLE_DEVICES           = '0'
     }
 
-    # ROCM_HOME / HIP_PATH - point at the rocm_sdk_devel bin if present, else the env Scripts dir
-    $rocmBinPath = if ($rocmSdkDevel) { Join-Path $rocmSdkDevel 'bin' } else { Join-Path $envFolder 'Scripts' }
-    $envVars['ROCM_HOME'] = $rocmBinPath
-    $envVars['HIP_PATH']  = $rocmBinPath
-    $envVars['ROCM_PATH'] = $rocmBinPath
+    # ROCM_HOME / HIP_PATH / ROCM_PATH - point at the rocm_sdk_devel root (contains
+    # include/hip/hip_version.h and .info/version, which aiter's get_hip_version()
+    # needs) if present, else the env Scripts dir. Must match instance.launch.ps1.tpl,
+    # which points these at the devel root rather than its bin subfolder - pointing
+    # at bin here previously made aiter's version-file lookup search bin\bin\... and
+    # bin\include\..., neither of which exist, breaking ComfyUI Desktop launches
+    # (direct ROCmRoll launches were unaffected since they set the root correctly).
+    $rocmDevelRoot = if ($rocmSdkDevel) { $rocmSdkDevel } else { Join-Path $envFolder 'Scripts' }
+    $envVars['ROCM_HOME'] = $rocmDevelRoot
+    $envVars['HIP_PATH']  = $rocmDevelRoot
+    $envVars['ROCM_PATH'] = $rocmDevelRoot
 
     # HSA_OVERRIDE_GFX_VERSION - only for specific (non-wildcard) GFX IDs
     $hsaVersion = ConvertTo-HsaGfxVersion -GfxFamily $GfxFamily
