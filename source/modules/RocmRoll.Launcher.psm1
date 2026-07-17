@@ -23,6 +23,7 @@ function Invoke-GenerateLaunchers {
 
     Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force -Global
     Import-Module (Join-Path $PSScriptRoot 'RocmRoll.State.psm1') -Force -Global
+    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Profiles.psm1') -Force -Global
     $cfg            = Get-Config
     # Resolve removed-channel aliases immediately after the Config import so the
     # call cannot be affected by any module re-import that runs in between.
@@ -30,13 +31,14 @@ function Invoke-GenerateLaunchers {
     $instanceFolder = Join-Path $cfg.InstancesFolder $InstanceName
     $envFolder      = Join-Path $cfg.EnvironmentsFolder $EnvironmentName
 
+    # Called mid-pipeline, before state has a 'path' - guard with PSObject.Properties[].
     $state = Get-InstanceState -Name $InstanceName
-    if ($state -and $state.path) {
+    if ($state -and $state.PSObject.Properties['path'] -and $state.path) {
         $instanceFolder = $state.path
     }
 
     $envState = Get-EnvironmentState -Name $EnvironmentName
-    if ($envState -and $envState.path) {
+    if ($envState -and $envState.PSObject.Properties['path'] -and $envState.path) {
         $envFolder = $envState.path
     }
 
@@ -88,6 +90,9 @@ function Invoke-GenerateLaunchers {
     }
 
     if (Test-Path $ps1Tpl) {
+        # Always resolve from RootFolder (not the workspace-redirected root) so the
+        # fallback still finds ROCmRoll's own shipped profiles.
+        $profilesRootFallback = Join-Path $cfg.RootFolder 'profiles'
         $ps1Content = Get-Content $ps1Tpl -Raw -Encoding UTF8
         $ps1Content = $ps1Content `
             -replace '\{InstanceName\}',    $InstanceName `
@@ -101,9 +106,12 @@ function Invoke-GenerateLaunchers {
             -replace '\{RocmIndex\}',       $RocmIndex `
             -replace '\{Port\}',            $Port `
             -replace '\{ProfilesFolder\}',  $cfg.ProfilesFolder `
+            -replace '\{ProfilesRootFallback\}', $profilesRootFallback `
             -replace '\{ProfileName\}',     $ProfileName
-        if (-not (Test-Path $cfg.ProfilesFolder)) {
-            Write-LogWarning "ProfilesFolder '$($cfg.ProfilesFolder)' does not exist - launchers will fail to load profiles at runtime." -Comp 'RocmRoll.Launcher'
+        try {
+            Get-ProfilePath -Name $ProfileName -Config $cfg | Out-Null
+        } catch {
+            Write-LogWarn "Profile '$ProfileName' not found in '$($cfg.ProfilesFolder)' or '$profilesRootFallback' - launcher will fail to load it at runtime." -Comp 'RocmRoll.Launcher'
         }
         Write-RocmRollTextFile -Path (Join-Path $launchersFolder "$InstanceName.ps1") -Content $ps1Content
     }
@@ -121,6 +129,39 @@ function Invoke-GenerateLaunchers {
     Write-LogSuccess "Launchers generated for instance '$InstanceName' using profile '$ProfileName'" -Comp 'RocmRoll.Launcher'
 }
 
+function Find-RocmRollInstanceWorkspaces {
+    <#
+    .SYNOPSIS
+        Scans every other configured workspace for an installed instance named
+        Name, so a launch failure can point at the right --workspace instead of
+        just saying "not found". Reads state files directly rather than
+        switching the active config.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][hashtable]$Config
+    )
+
+    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Workspace.psm1') -Force -Global
+    $found = New-Object System.Collections.Generic.List[string]
+    foreach ($ws in @(Get-WorkspaceList -Config $Config | Where-Object { -not $_.IsActive })) {
+        $stateFolder = if ($ws.Object.paths -and $ws.Object.paths.PSObject.Properties['state'] -and $ws.Object.paths.state) {
+            [string]$ws.Object.paths.state
+        } else {
+            Join-Path $Config.RootFolder '.state'
+        }
+        $candidatePath = Join-Path (Join-Path $stateFolder 'instances') "instance-$Name.json"
+        if (-not (Test-Path -LiteralPath $candidatePath)) { continue }
+        try {
+            $candidateState = Get-Content -LiteralPath $candidatePath -Raw -Encoding UTF8 | ConvertFrom-Json
+        } catch { continue }
+        if ($candidateState.PSObject.Properties['status'] -and $candidateState.status) {
+            $found.Add($ws.Name) | Out-Null
+        }
+    }
+    return $found.ToArray()
+}
+
 function Invoke-LaunchInstance {
     param(
         [string]$InstanceName,
@@ -134,7 +175,19 @@ function Invoke-LaunchInstance {
 
     $cfg   = Get-Config
     $state = Get-InstanceState -Name $InstanceName
-    if (-not $state) { throw "ROCMROLL-LAUNCH-001: Instance '$InstanceName' state not found. Run install first." }
+    # A non-null $state doesn't guarantee a real install: a 'plan'-only run can
+    # leave a partial state record with no status.
+    $hasStatus = $state -and $state.PSObject.Properties['status'] -and $state.status
+    if (-not $hasStatus) {
+        $activeWs = if ($cfg.ActiveWorkspace) { $cfg.ActiveWorkspace } else { '(default, no workspace)' }
+        $foundIn  = @(Find-RocmRollInstanceWorkspaces -Name $InstanceName -Config $cfg)
+        $hint     = if ($foundIn.Count -gt 0) {
+            "Found in workspace '$($foundIn[0])'. Retry with: rocmroll instance launch --name $InstanceName --workspace $($foundIn[0])"
+        } else {
+            "Run 'rocmroll instance install --name $InstanceName' or check 'rocmroll workspace list' for the correct workspace."
+        }
+        throw "ROCMROLL-LAUNCH-001: Instance '$InstanceName' not found or not fully installed in the current workspace ('$activeWs'). $hint"
+    }
     if ($state.status -ne 'ready') { throw "ROCMROLL-LAUNCH-002: Instance '$InstanceName' is not in ready state (status: $($state.status))." }
 
     $launchScript = Join-Path $cfg.LaunchersFolder "$InstanceName.ps1"

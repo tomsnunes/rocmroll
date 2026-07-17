@@ -212,6 +212,8 @@ function Initialize-Config {
 
         BinFolder          = Join-Path $RootFolder 'bin'
 
+        OverlaysFolder     = Join-Path $RootFolder 'overlays'
+
         WorkspacesFolder   = $workspacesFolder
         ActiveWorkspace    = $activeWorkspaceName
 
@@ -248,6 +250,27 @@ function Get-RocmIndexUrl {
     param([string]$RocmIndex)
     $cfg = Get-Config
     return "$($cfg.RocmIndexBase)/$RocmIndex/"
+}
+
+# ---------------------------------------------------------------------------
+# Per-instance overlay folder: root-relative, not user-configurable, same
+# convention as workspaces\. See docs\declarative-instances.md for the layout.
+# ---------------------------------------------------------------------------
+
+function Get-InstanceOverlayFolder {
+    param([Parameter(Mandatory)][string]$InstanceName)
+    $cfg = Get-Config
+    return Join-Path $cfg.OverlaysFolder $InstanceName
+}
+
+function Get-InstanceOverlayEnvironmentFolder {
+    param([Parameter(Mandatory)][string]$InstanceName)
+    return Join-Path (Get-InstanceOverlayFolder -InstanceName $InstanceName) 'environment'
+}
+
+function Get-InstanceOverlayInstanceFolder {
+    param([Parameter(Mandatory)][string]$InstanceName)
+    return Join-Path (Get-InstanceOverlayFolder -InstanceName $InstanceName) 'instance'
 }
 
 function Resolve-ChannelName {
@@ -388,5 +411,6 @@ function Initialize-DefaultConfigFile {
 
 Export-ModuleMember -Function Initialize-Config, Get-Config, Get-ConfigValue,
     Get-RuntimeFolder, Get-RocmIndexUrl, Resolve-ChannelName,
+    Get-InstanceOverlayFolder, Get-InstanceOverlayEnvironmentFolder, Get-InstanceOverlayInstanceFolder,
     Initialize-FolderStructure, Initialize-DefaultConfigFile,
     Read-IniFile
