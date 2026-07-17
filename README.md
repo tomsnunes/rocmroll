@@ -1,11 +1,18 @@
-# ComfyUI ROCmRoll
+<div align="center">
+  <img src="logo.png" alt="ComfyUI ROCmRoll logo" width="360">
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Platform: Windows](https://img.shields.io/badge/Platform-Windows-0078d7.svg)](https://www.microsoft.com/windows)
-[![PowerShell 5.1+](https://img.shields.io/badge/PowerShell-5.1%2B-5391FE.svg)](https://github.com/PowerShell/PowerShell)
-[![AMD ROCm](https://img.shields.io/badge/AMD-ROCm-ED1C24.svg)](https://rocm.docs.amd.com)
+  <h1>ROCmRoll</h1>
 
-ComfyUI ROCmRoll is a Windows platform manager for creating, launching, updating, diagnosing, and repairing portable ComfyUI installations optimized for AMD GPUs with ROCm packages.
+  <p><strong>ROCmRoll is a Windows-native platform manager for portable ComfyUI environments optimized for AMD Radeon GPUs using ROCm and PyTorch. It helps users create, launch, update, diagnose, and repair reproducible ComfyUI instances while reducing the setup friction commonly associated with AMD GPU workflows on Windows.
+</strong></p>
+
+  [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+  [![Platform: Windows](https://img.shields.io/badge/Platform-Windows-0078d7.svg)](https://www.microsoft.com/windows)
+  [![PowerShell 5.1+](https://img.shields.io/badge/PowerShell-5.1%2B-5391FE.svg)](https://github.com/PowerShell/PowerShell)
+  [![AMD ROCm](https://img.shields.io/badge/AMD-ROCm-ED1C24.svg)](https://rocm.docs.amd.com)
+</div>
+
+---
 
 ROCmRoll keeps its orchestration outside ComfyUI:
 
@@ -14,6 +21,35 @@ ROCmRoll keeps its orchestration outside ComfyUI:
 - Heavy assets such as models, input, output, temp files, and optional workflows are shared outside the ComfyUI source tree.
 
 See [docs/architecture.md](docs/architecture.md) for the implementation architecture.
+
+<details>
+<summary><strong>Table of contents</strong></summary>
+
+- [Status](#status)
+- [Requirements](#requirements)
+- [Quick Start](#quick-start)
+- [Instance Overlays](#instance-overlays)
+- [Declarative Instances](#declarative-instances)
+- [Channels](#channels)
+- [Profiles](#profiles)
+- [Supported GPU Families](#supported-gpu-families)
+- [What Install Does](#what-install-does)
+- [Project Layout](#project-layout)
+- [Configuration](#configuration)
+- [Workspaces](#workspaces)
+- [Command Reference](#command-reference)
+- [Examples](#examples)
+- [Runtime And ROCm](#runtime-and-rocm)
+- [Custom Nodes, Packages, And Patches](#custom-nodes-packages-and-patches)
+- [Launch Behavior](#launch-behavior)
+- [State, Logs, Locks, And Cache](#state-logs-locks-and-cache)
+- [ComfyUI Desktop Integration](#comfyui-desktop-integration)
+- [Troubleshooting](#troubleshooting)
+- [Development Notes](#development-notes)
+- [Credits](#credits)
+- [License](#license)
+
+</details>
 
 ## Status
 
@@ -29,7 +65,8 @@ Implemented areas include:
 - Stable, preview, nightly, legacy, and legacy-staging channel manifests
 - ComfyUI Git mirror cache and per-instance clone
 - Instance-local custom node install/update
-- Generated `extra_model_paths.yaml`
+- Generated `extra_model_paths.yaml`, preserved on update/repair and overridable via a custom overlay
+- Declarative `import`/`plan`/`apply`/`destroy` top-level commands on top of an optional YAML instance definition, reusing the imperative install/update/remove pipeline under the hood
 - Generated launchers under `launchers\`
 - Shared asset folders
 - ROCm/PyTorch validation via `source\scripts\validate-rocm.py`
@@ -112,25 +149,31 @@ If more than one ready instance exists, `instance launch` can run without `--nam
 .\rocmroll.bat launch
 ```
 
-## Custom Resources
+## Instance Overlays
 
-ROCmRoll supports per-instance resource overlays in the `custom\` folder at the repository root. Files placed there are loaded after the global manifests and do not require editing any source file.
+ROCmRoll supports per-instance resource overlays in the `overlays\` folder at the repository root. Files placed there are loaded after the global manifests/templates and do not require editing any source file. This is also where declarative instance YAML definitions live - see [Declarative Instances](#declarative-instances) below.
 
 ### Layout
 
 ```text
-custom\
+overlays\
   <instanceName>\
-    requirements.txt      Optional extra pip packages for this instance
-    custom_nodes.json     Optional extra custom nodes for this instance
+    <instanceName>.yaml           Optional declarative instance definition
+    environment\
+      requirements.txt            Optional extra pip packages for this instance
+    instance\
+      custom_nodes.json           Optional extra custom nodes for this instance
+      extra_model_paths.yaml      Optional overlay for this instance's extra_model_paths.yaml
 ```
+
+The overlay folder always takes priority over ROCmRoll's built-in defaults: `extra_model_paths.yaml` uses the overlay instead of the template whenever an overlay file exists; `requirements.txt` and `custom_nodes.json` overlays are installed in addition to ComfyUI's/the default manifest's own, after them.
 
 ### Custom requirements
 
-Place a standard `requirements.txt` in `custom\<instanceName>\`:
+Place a standard `requirements.txt` in `overlays\<instanceName>\environment\`:
 
 ```text
-custom\rocm-stable\requirements.txt
+overlays\rocm-stable\environment\requirements.txt
 ```
 
 ROCmRoll installs it after ComfyUI's own `requirements.txt` using the same pip cache and upgrade strategy. A non-zero pip exit code is a fatal error and reports `ROCMROLL-COMFY-005`.
@@ -144,7 +187,7 @@ This file is picked up by every code path that runs ComfyUI dependency installat
 
 ### Custom nodes
 
-Place a `custom_nodes.json` in `custom\<instanceName>\` using the same format as `source\manifests\custom-nodes.json`:
+Place a `custom_nodes.json` in `overlays\<instanceName>\instance\` using the same format as `source\manifests\custom-nodes.json`:
 
 ```json
 {
@@ -165,7 +208,34 @@ ROCmRoll clones and configures these nodes after the default manifest nodes. Clo
 - `comfyui nodes --install` / `--update`
 - `instance repair --custom-nodes`
 
-The `custom\` folder is root-relative and is not user-configurable in `rocmroll.ini`.
+### Custom extra_model_paths.yaml
+
+Place a custom `extra_model_paths.yaml` in `overlays\<instanceName>\instance\`:
+
+```text
+overlays\rocm-stable\instance\extra_model_paths.yaml
+```
+
+If present, ROCmRoll renders this file (with `{SharedFolder}` substituted) into `instances\<instanceName>\extra_model_paths.yaml` whenever the file needs to be generated. Without an overlay, ROCmRoll falls back to `source\templates\extra_model_paths.yaml.tpl`.
+
+`instance update` and `comfyui update` never overwrite an existing `extra_model_paths.yaml`, even if the overlay or template changed - your edits are always preserved. `instance repair --comfyui` regenerates it automatically only if it still matches what ROCmRoll last wrote; if it looks hand-edited, repair asks for confirmation (or pass `--force` to skip the prompt). See [docs/declarative-instances.md](docs/declarative-instances.md) for full details.
+
+The `overlays\` folder is root-relative and is not user-configurable in `rocmroll.ini`.
+
+## Declarative Instances
+
+ROCmRoll can be driven two ways: **imperatively**, with the `instance` commands above (simple, one command at a time), or **declaratively**, by describing an instance as YAML and letting ROCmRoll converge to it - `import`, `plan`, `apply`, and `destroy` are top-level commands (not `instance` subcommands), following the same `plan`/`apply` split as Terraform's main commands. `apply` is capable of everything `instance install`/`instance update` can do, since for anything beyond a small config-file reconciliation it calls the exact same underlying pipeline under the hood; `destroy` is the equivalent counterpart for `instance remove --all`.
+
+```powershell
+.\rocmroll.bat import --name rocm-stable
+.\rocmroll.bat plan --file .\overlays\rocm-stable\rocm-stable.yaml
+.\rocmroll.bat apply --file .\overlays\rocm-stable\rocm-stable.yaml
+.\rocmroll.bat destroy --name rocm-stable
+```
+
+`import` reverse-engineers `overlays\<name>\<name>.yaml` from an already-installed instance's recorded state and filesystem, so you don't have to hand-write the schema for instances you already have. `plan` compares the YAML definition, ROCmRoll's recorded state, and the actual filesystem, then prints a classified list of changes (create/update/preserve/warning/destructive) before anything happens. `apply` executes that plan - a genuinely new or under-provisioned instance gets the full install/update pipeline (Python runtime, environment, ROCm/PyTorch, ComfyUI, custom nodes, packages, patches, launchers); a plan with only small changes (e.g. just the launcher is missing) only does that - and it blocks anything destructive unless you pass `--allow-destructive`. `apply --file X` computes and applies a plan directly in one step; `apply --plan X.plan.json --file X` applies a plan `plan --output` saved earlier. `destroy` tears down the checkout, environment, launchers, and recorded state - shared assets and the instance's `overlays\<name>\` files are always preserved - and requires typing the instance's name to confirm unless `--auto-approve` is passed.
+
+This is entirely optional - existing `instance install`/`update`/`repair`/`remove` workflows are unaffected, and the declarative commands reuse them rather than duplicating them. See [docs/declarative-instances.md](docs/declarative-instances.md) for the YAML schema, the full plan/apply/destroy reference, and destructive-action safeguards.
 
 ## Channels
 
@@ -173,7 +243,7 @@ Channels are defined in `source\manifests\channels.json`.
 
 | Channel | ComfyUI ref | ROCm source | Default profile | Notes |
 | --- | --- | --- | --- | --- |
-| `stable` | `v0.27.0` | AMD ROCm 7.2.1 direct URLs | `stable` | Pinned ROCmRoll baseline; Python 3.12 required |
+| `stable` | `v0.28.0` | AMD ROCm 7.2.1 direct URLs | `stable` | Pinned ROCmRoll baseline; Python 3.12 required |
 | `preview` | `master` | `https://rocm.nightlies.amd.com/whl-multi-arch/` | `optimized` | AMD's unified multi-arch wheel index (promoted) |
 | `nightly` | `master` | `https://rocm.nightlies.amd.com/whl-staging-multi-arch/` | `optimized` | Staging multi-arch index; more volatile than preview |
 | `legacy` | `master` | `https://rocm.nightlies.amd.com/v2/<rocmIndex>/` | `optimized` | Per-GPU-family v2 index (pre-multi-arch scheme) |
@@ -364,7 +434,10 @@ source\patches\                Package and ComfyUI patch definitions
 source\templates\              Generated launcher and config templates
 profiles\                      Execution profile JSON files
 workspaces\                    Workspace JSON files
+overlays\                      Per-instance overlays: requirements.txt, custom_nodes.json,
+                                extra_model_paths.yaml, and declarative <name>.yaml definitions
 docs\architecture.md           Current architecture reference
+docs\declarative-instances.md  Declarative instance schema and plan/apply/destroy reference
 ```
 
 Generated runtime layout:
@@ -503,6 +576,10 @@ Advanced commands:
 | `patch` | List, apply, or remove ComfyUI source patches |
 | `workspace` | Manage named path workspaces |
 | `logs` | Show recent log files |
+| `import` | Generate a declarative YAML definition from an existing instance |
+| `plan` | Show planned changes for a declarative instance YAML definition |
+| `apply` | Apply a declarative instance YAML definition (same install/update pipeline as `instance install`/`update`) |
+| `destroy` | Destroy an instance's checkout, environment, launchers, and state (shared assets and overlays preserved) |
 | `help` | Show command help |
 
 Global options accepted by every command:
@@ -524,12 +601,17 @@ Common command-specific options:
 | `--workspace NAME` | Commands whose help explicitly lists workspace selection |
 | `--channel stable\|preview\|nightly\|legacy\|legacy-staging` | Instance install and list filtering |
 | `--python VERSION` | Instance install; default `3.12.10` |
-| `--name NAME` | Instance aggregate commands and workspace, environment, or profile commands |
+| `--name NAME` | Instance aggregate commands, `plan`/`apply`/`destroy`/`import`, and workspace, environment, or profile commands |
 | `--instance NAME` | Doctor, ROCm, ComfyUI, `profile apply`, and patch commands |
 | `--environment`, `--rocm`, `--comfyui`, `--patches`, `--all` | Component scopes listed by instance info/update/repair/remove help |
 | `--profile NAME` | Instance install, launch, and `profile apply` |
-| `--force` | Forced install/update/removal or stale install-lock override where listed |
+| `--force` | Forced install/update/removal, stale install-lock override, or skip repair's managed-file confirmation |
 | `--gfx ARCH`, `--port PORT`, `--url HOST`, `--patch-id ID`, `--shared-workflows` | Specialized commands shown in command help |
+| `--file PATH` | `plan`/`apply`/`destroy`: path to a ComfyUIInstance YAML definition |
+| `--output PATH` | `plan`: write the plan as JSON to this path; `import`: write the definition to this path |
+| `--plan PATH` | `apply`: apply a previously saved plan JSON instead of regenerating one |
+| `--auto-approve`, `--dry-run` | `apply`/`destroy`: skip confirmation, or preview only |
+| `--allow-destructive` | `apply`: allow destructive actions |
 
 ## Examples
 
@@ -753,6 +835,8 @@ $errors
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
 
+---
+
 ## Credits
 
 ROCmRoll builds on the work of these projects and people:
@@ -768,6 +852,10 @@ ROCmRoll builds on the work of these projects and people:
 
 MIT - see [LICENSE](LICENSE).
 
-## About
+<div align="center">
+
+### About
 
 [![Made in Brazil](https://selo.feitonobrasil.dev.br/en/colorido/1x.svg)](https://feitonobrasil.dev.br)
+
+</div>
