@@ -47,6 +47,35 @@ function Get-SafeGitRepositoryArguments {
     return @('-c', "safe.directory=$RepositoryPath", '-C', $RepositoryPath) + $Arguments
 }
 
+function Get-RocmRollStringHash {
+    param([AllowNull()][string]$Content)
+
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes([string]$Content)
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $hashBytes = $sha256.ComputeHash($bytes)
+    } finally {
+        $sha256.Dispose()
+    }
+    $hex = -join ($hashBytes | ForEach-Object { $_.ToString('x2') })
+    return "sha256:$hex"
+}
+
+function Get-RocmRollFileHash {
+    param([string]$Path)
+
+    if (-not $Path -or -not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
+    $bytes = [System.IO.File]::ReadAllBytes($Path)
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $hashBytes = $sha256.ComputeHash($bytes)
+    } finally {
+        $sha256.Dispose()
+    }
+    $hex = -join ($hashBytes | ForEach-Object { $_.ToString('x2') })
+    return "sha256:$hex"
+}
+
 function Remove-FolderTree {
     param(
         [string]$Path,
@@ -86,4 +115,5 @@ function Remove-FolderTree {
 }
 
 Export-ModuleMember -Function Test-PathInsideFolder, Invoke-QuietNativeCommand,
-    Get-SafeGitRepositoryArguments, Remove-FolderTree
+    Get-SafeGitRepositoryArguments, Remove-FolderTree,
+    Get-RocmRollStringHash, Get-RocmRollFileHash

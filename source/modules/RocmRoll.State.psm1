@@ -182,6 +182,20 @@ function Set-InstanceState {
         status      = $Status
         updatedAt   = (Get-Date).ToString('yyyy-MM-ddTHH:mm:sszzz')
     }
+
+    # Carry forward additive metadata this function doesn't own (managed-file
+    # tracking, declarative-definition record, last plan) so a full-install or
+    # full-update pass doesn't erase it. These fields are only ever written by
+    # Set-InstanceManagedFile / Set-InstanceDefinitionRecord / Set-InstanceLastPlan
+    # / Set-InstanceComfyDesktopId.
+    $existing = Read-StateFile -Path $filePath
+    if ($existing) {
+        foreach ($carryKey in @('managedFiles', 'definition', 'lastPlan', 'comfyDesktopId')) {
+            $prop = $existing.PSObject.Properties[$carryKey]
+            if ($prop -and $null -ne $prop.Value) { $state[$carryKey] = $prop.Value }
+        }
+    }
+
     Write-StateFile -Path $filePath -State $state
 }
 
@@ -205,6 +219,96 @@ function Set-InstanceComfyDesktopId {
     Write-StateFile -Path $filePath -State $ht
 }
 
+function Read-RocmRollInstanceStateHashtable {
+    <#
+    Shared read-modify helper: loads instance state as a plain hashtable so
+    callers can patch a single field and write it back without clobbering
+    unrelated properties.
+    #>
+    param([string]$Name)
+
+    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force -Global
+    $cfg = Get-Config
+    $filePath = Join-Path $cfg.InstanceStateFolder "instance-$Name.json"
+    $existing = Read-StateFile -Path $filePath
+    # Tolerate a missing state file: model-paths logic runs during a fresh
+    # install before Set-InstanceState writes the instance record for the
+    # first time. Set-InstanceState carries these additive fields forward.
+    $state = if ($existing) { ConvertTo-StateHashtable -InputObject $existing } else { @{ type = 'comfyui-instance'; name = $Name } }
+    return @{ Path = $filePath; State = $state }
+}
+
+function Set-InstanceManagedFile {
+    <#
+    Records or updates one entry under state.managedFiles.<Key>, used to tell
+    ROCmRoll-generated files (e.g. extra_model_paths.yaml) apart from files a
+    user has created or edited by hand.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$Key,
+        [Parameter(Mandatory)][hashtable]$Info
+    )
+
+    $loaded = Read-RocmRollInstanceStateHashtable -Name $Name
+    $managedFiles = if ($loaded.State.ContainsKey('managedFiles')) {
+        ConvertTo-StateHashtable -InputObject $loaded.State['managedFiles']
+    } else {
+        @{}
+    }
+    $managedFiles[$Key] = $Info
+    $loaded.State['managedFiles'] = $managedFiles
+    $loaded.State['updatedAt'] = (Get-Date).ToString('yyyy-MM-ddTHH:mm:sszzz')
+    Write-StateFile -Path $loaded.Path -State $loaded.State
+}
+
+function Get-InstanceManagedFile {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$Key
+    )
+
+    $state = Get-InstanceState -Name $Name
+    if (-not $state -or -not $state.PSObject.Properties['managedFiles'] -or -not $state.managedFiles) { return $null }
+    $prop = $state.managedFiles.PSObject.Properties[$Key]
+    if (-not $prop) { return $null }
+    return $prop.Value
+}
+
+function Set-InstanceDefinitionRecord {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$SourcePath,
+        [Parameter(Mandatory)][string]$ContentHash
+    )
+
+    $loaded = Read-RocmRollInstanceStateHashtable -Name $Name
+    $loaded.State['definition'] = @{
+        sourcePath    = $SourcePath
+        contentHash   = $ContentHash
+        lastAppliedAt = (Get-Date).ToString('yyyy-MM-ddTHH:mm:sszzz')
+    }
+    $loaded.State['updatedAt'] = (Get-Date).ToString('yyyy-MM-ddTHH:mm:sszzz')
+    Write-StateFile -Path $loaded.Path -State $loaded.State
+}
+
+function Set-InstanceLastPlan {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$ContentHash
+    )
+
+    $loaded = Read-RocmRollInstanceStateHashtable -Name $Name
+    $loaded.State['lastPlan'] = @{
+        path        = $Path
+        contentHash = $ContentHash
+        createdAt   = (Get-Date).ToString('yyyy-MM-ddTHH:mm:sszzz')
+    }
+    $loaded.State['updatedAt'] = (Get-Date).ToString('yyyy-MM-ddTHH:mm:sszzz')
+    Write-StateFile -Path $loaded.Path -State $loaded.State
+}
+
 function Get-GlobalState {
     Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force -Global
     $cfg = Get-Config
@@ -225,4 +329,6 @@ Export-ModuleMember -Function Get-StateFilePath, Read-StateFile, Write-StateFile
     Get-RuntimeState, Set-RuntimeState,
     Get-EnvironmentState, Set-EnvironmentState,
     Get-InstanceState, Set-InstanceState, Set-InstanceComfyDesktopId,
+    Set-InstanceManagedFile, Get-InstanceManagedFile,
+    Set-InstanceDefinitionRecord, Set-InstanceLastPlan,
     Get-GlobalState, Set-GlobalState

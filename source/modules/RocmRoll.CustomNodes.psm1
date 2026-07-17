@@ -105,9 +105,9 @@ function Invoke-InstallCustomNodes {
             -Update:$Update -RequirementsOnly:$RequirementsOnly
     }
 
-    $customNodesFile = Join-Path (Join-Path (Join-Path $cfg.RootFolder 'custom') $InstanceName) 'custom_nodes.json'
+    $customNodesFile = Join-Path (Get-InstanceOverlayInstanceFolder -InstanceName $InstanceName) 'custom_nodes.json'
     if (Test-Path $customNodesFile) {
-        Write-LogInfo "Loading custom nodes from custom\$InstanceName\custom_nodes.json" -Comp 'RocmRoll.CustomNodes' -Inst $InstanceName
+        Write-LogInfo "Loading custom nodes from overlays\$InstanceName\instance\custom_nodes.json" -Comp 'RocmRoll.CustomNodes' -Inst $InstanceName
         $customManifest = Get-Content $customNodesFile -Raw -Encoding UTF8 | ConvertFrom-Json
         foreach ($node in $customManifest.default) {
             Invoke-ProcessNodeEntry -Node $node -NodesFolder $nodesFolder -PythonExe $pythonExe `

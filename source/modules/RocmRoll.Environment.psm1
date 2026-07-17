@@ -95,9 +95,10 @@ function Set-EnvironmentInstancePath {
 
     $cfg          = Get-Config
     $instanceState = Get-InstanceState -Name $InstanceName
-    $instanceFolder = if ($instanceState -and $instanceState.path) { $instanceState.path } else { Join-Path $cfg.InstancesFolder $InstanceName }
+    # Called mid-pipeline, before state has a 'path' - guard with PSObject.Properties[].
+    $instanceFolder = if ($instanceState -and $instanceState.PSObject.Properties['path'] -and $instanceState.path) { $instanceState.path } else { Join-Path $cfg.InstancesFolder $InstanceName }
     $envState     = Get-EnvironmentState -Name $EnvironmentName
-    $envFolder    = if ($envState -and $envState.path) { $envState.path } else { Join-Path $cfg.EnvironmentsFolder $EnvironmentName }
+    $envFolder    = if ($envState -and $envState.PSObject.Properties['path'] -and $envState.path) { $envState.path } else { Join-Path $cfg.EnvironmentsFolder $EnvironmentName }
 
     if (-not (Test-Path $envFolder))      { throw "ROCMROLL-ENV-003: Environment folder not found: $envFolder" }
     if (-not (Test-Path $instanceFolder)) { throw "ROCMROLL-ENV-004: Instance folder not found: $instanceFolder" }

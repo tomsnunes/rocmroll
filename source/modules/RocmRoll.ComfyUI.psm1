@@ -118,13 +118,13 @@ function Invoke-InstallComfyDeps {
         Write-LogSuccess "ComfyUI manager dependencies installed" -Comp 'RocmRoll.ComfyUI'
     }
 
-    $customReqFile = Join-Path (Join-Path (Join-Path $cfg.RootFolder 'custom') $InstanceName) 'requirements.txt'
+    $customReqFile = Join-Path (Get-InstanceOverlayEnvironmentFolder -InstanceName $InstanceName) 'requirements.txt'
     if (Test-Path $customReqFile) {
-        Write-LogInfo "Installing custom requirements from custom\$InstanceName\requirements.txt" -Comp 'RocmRoll.ComfyUI' -Op 'InstallDeps' -Inst $InstanceName
+        Write-LogInfo "Installing overlay requirements from overlays\$InstanceName\environment\requirements.txt" -Comp 'RocmRoll.ComfyUI' -Op 'InstallDeps' -Inst $InstanceName
         $customPipArgs = @('-m', 'pip', 'install', '--cache-dir', $cfg.PipCacheFolder, '--upgrade-strategy', 'only-if-needed', '-r', $customReqFile)
         $customPipExitCode = Invoke-LoggedNativeCommand -FilePath $pythonExe -Arguments $customPipArgs -Comp 'RocmRoll.ComfyUI' -Op 'InstallDeps' -Inst $InstanceName
-        if ($customPipExitCode -ne 0) { throw "ROCMROLL-COMFY-005: pip install custom requirements.txt failed (exit $customPipExitCode)" }
-        Write-LogSuccess "Custom requirements installed" -Comp 'RocmRoll.ComfyUI'
+        if ($customPipExitCode -ne 0) { throw "ROCMROLL-COMFY-005: pip install overlay requirements.txt failed (exit $customPipExitCode)" }
+        Write-LogSuccess "Overlay requirements installed" -Comp 'RocmRoll.ComfyUI'
     }
 }
 
@@ -194,38 +194,22 @@ function Invoke-UpdateComfyUIInstance {
 }
 
 function Invoke-GenerateExtraModelPaths {
-    param([string]$InstanceName)
+    <#
+    .SYNOPSIS
+        Compatibility wrapper. Prefer calling Invoke-ApplyExtraModelPaths
+        (RocmRoll.ModelPaths) directly with an explicit -Mode so update and
+        repair flows get drift-safe, preserve-on-update behavior. This
+        wrapper defaults to Install semantics: it creates the file if
+        missing and otherwise leaves an existing managed file alone unless
+        -Force is supplied.
+    #>
+    param(
+        [string]$InstanceName,
+        [switch]$Force
+    )
 
-    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force -Global
-    $cfg            = Get-Config
-    $instanceFolder = Join-Path $cfg.InstancesFolder $InstanceName
-    $tplPath        = Join-Path $cfg.TemplatesFolder 'extra_model_paths.yaml.tpl'
-    $destPath       = Join-Path $instanceFolder 'extra_model_paths.yaml'
-
-    $sharedSlash = $cfg.SharedFolder -replace '\\', '/'
-    if (Test-Path $tplPath) {
-        $content = Get-Content $tplPath -Raw -Encoding UTF8
-        $content = $content -replace '\{SharedFolder\}', $sharedSlash
-    } else {
-        $content = @"
-rocmroll:
-  base_path: $sharedSlash
-  checkpoints: models/checkpoints/
-  clip: models/clip/
-  clip_vision: models/clip_vision/
-  configs: models/configs/
-  controlnet: models/controlnet/
-  diffusion_models: models/diffusion_models/
-  embeddings: models/embeddings/
-  loras: models/loras/
-  upscale_models: models/upscale_models/
-  vae: models/vae/
-  text_encoders: models/text_encoders/
-"@
-    }
-    Write-RocmRollTextFile -Path $destPath -Content $content
-    Write-LogSuccess "Generated extra_model_paths.yaml at $destPath" -Comp 'RocmRoll.ComfyUI'
-    return $destPath
+    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.ModelPaths.psm1') -Force -Global
+    return Invoke-ApplyExtraModelPaths -InstanceName $InstanceName -Mode 'Install' -Force:$Force
 }
 
 function Invoke-LinkSharedWorkflows {

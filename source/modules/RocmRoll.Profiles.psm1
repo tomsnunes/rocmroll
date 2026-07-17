@@ -38,10 +38,21 @@ function Get-ProfilePath {
     <#
     .SYNOPSIS
         Resolves the full path to a named profile JSON file.
+
+    .DESCRIPTION
+        Checks the configured/workspace ProfilesFolder first. If the profile
+        isn't there and -PrimaryOnly isn't set, falls back to the repo's
+        built-in <RootFolder>\profiles - the same "overlay wins over
+        default" precedent used for extra_model_paths.yaml, and needed
+        because a workspace can redirect ProfilesFolder somewhere that
+        doesn't have ROCmRoll's shipped profiles (stable.json, optimized.json,
+        etc.). -PrimaryOnly is used by Remove-Profile so deleting a profile
+        can never reach into and delete a shipped built-in.
     #>
     param(
         [Parameter(Mandatory)][string]$Name,
-        [hashtable]$Config = $null
+        [hashtable]$Config = $null,
+        [switch]$PrimaryOnly
     )
 
     if (-not $Config) {
@@ -49,11 +60,17 @@ function Get-ProfilePath {
         $Config = Get-Config
     }
 
-    $path = Join-Path $Config.ProfilesFolder "$Name.json"
-    if (-not (Test-Path $path)) {
-        throw "ROCMROLL-PROFILE-001: Profile '$Name' not found at '$path'. Run 'rocmroll profile list' to see available profiles."
+    $primaryPath = Join-Path $Config.ProfilesFolder "$Name.json"
+    if (Test-Path $primaryPath) { return $primaryPath }
+
+    if ($PrimaryOnly) {
+        throw "ROCMROLL-PROFILE-001: Profile '$Name' not found at '$primaryPath'. Run 'rocmroll profile list' to see available profiles."
     }
-    return $path
+
+    $fallbackPath = Join-Path (Join-Path $Config.RootFolder 'profiles') "$Name.json"
+    if (Test-Path $fallbackPath) { return $fallbackPath }
+
+    throw "ROCMROLL-PROFILE-001: Profile '$Name' not found at '$primaryPath' or '$fallbackPath'. Run 'rocmroll profile list' to see available profiles."
 }
 
 function Get-ProfileObject {
@@ -83,7 +100,9 @@ function Get-ProfileObject {
 function Get-ProfileList {
     <#
     .SYNOPSIS
-        Returns all profiles found in the ProfilesFolder as PSCustomObjects.
+        Returns all profiles found in the ProfilesFolder as PSCustomObjects,
+        falling back to the repo's built-in <RootFolder>\profiles for any
+        name not present in the primary folder (see Get-ProfilePath).
     #>
     param(
         [hashtable]$Config = $null
@@ -94,19 +113,34 @@ function Get-ProfileList {
         $Config = Get-Config
     }
 
-    $folder = $Config.ProfilesFolder
-    if (-not (Test-Path $folder)) { return @() }
+    $primaryFolder  = $Config.ProfilesFolder
+    $fallbackFolder = Join-Path $Config.RootFolder 'profiles'
+    $seen = [ordered]@{}
 
-    $profiles = @()
-    foreach ($file in (Get-ChildItem -Path $folder -Filter '*.json' | Sort-Object Name)) {
-        try {
-            $obj = Get-Content $file.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
-            $profiles += $obj
-        } catch {
-            Write-LogWarn "Skipping malformed profile file: $($file.Name)" -Comp 'RocmRoll.Profiles'
+    if (Test-Path $primaryFolder) {
+        foreach ($file in (Get-ChildItem -Path $primaryFolder -Filter '*.json')) {
+            try {
+                $seen[$file.BaseName.ToLowerInvariant()] = (Get-Content $file.FullName -Raw -Encoding UTF8 | ConvertFrom-Json)
+            } catch {
+                Write-LogWarn "Skipping malformed profile file: $($file.Name)" -Comp 'RocmRoll.Profiles'
+            }
         }
     }
-    return $profiles
+
+    $sameFolder = ([System.IO.Path]::GetFullPath($fallbackFolder).TrimEnd('\') -ieq [System.IO.Path]::GetFullPath($primaryFolder).TrimEnd('\'))
+    if (-not $sameFolder -and (Test-Path $fallbackFolder)) {
+        foreach ($file in (Get-ChildItem -Path $fallbackFolder -Filter '*.json')) {
+            $key = $file.BaseName.ToLowerInvariant()
+            if ($seen.Contains($key)) { continue }
+            try {
+                $seen[$key] = (Get-Content $file.FullName -Raw -Encoding UTF8 | ConvertFrom-Json)
+            } catch {
+                Write-LogWarn "Skipping malformed profile file: $($file.Name)" -Comp 'RocmRoll.Profiles'
+            }
+        }
+    }
+
+    return @($seen.Keys | Sort-Object | ForEach-Object { $seen[$_] })
 }
 
 # ---------------------------------------------------------------------------
@@ -200,7 +234,7 @@ function New-ProfileInteractive {
     $description = (Read-Host '  Description (press Enter to skip)').Trim()
 
     # Base profile
-    $availableProfiles = Get-ProfileList -Config $Config
+    $availableProfiles = @(Get-ProfileList -Config $Config)
     $baseChoice = ''
     if ($availableProfiles.Count -gt 0) {
         Write-Host ''
@@ -514,7 +548,9 @@ function Remove-Profile {
         $Config = Get-Config
     }
 
-    $path = Get-ProfilePath -Name $Name -Config $Config
+    # -PrimaryOnly: removal must never reach into <RootFolder>\profiles and
+    # delete a shipped built-in profile via the fallback.
+    $path = Get-ProfilePath -Name $Name -Config $Config -PrimaryOnly
 
     if (-not $Force) {
         $confirm = (Read-Host "  Remove profile '$Name'? [y/N]").Trim()

@@ -45,7 +45,8 @@ function Invoke-FullInstall {
         [string]$GfxOverride      = '',
         [string]$ProfileName      = '',
         [switch]$Force,
-        [switch]$SharedWorkflows
+        [switch]$SharedWorkflows,
+        [switch]$IsUpdate
     )
 
     # Load all modules
@@ -60,6 +61,7 @@ function Invoke-FullInstall {
     Import-Module (Join-Path $modDir 'RocmRoll.Hardware.psm1')    -Force -Global
     Import-Module (Join-Path $modDir 'RocmRoll.Rocm.psm1')        -Force -Global
     Import-Module (Join-Path $modDir 'RocmRoll.ComfyUI.psm1')     -Force -Global
+    Import-Module (Join-Path $modDir 'RocmRoll.ModelPaths.psm1')  -Force -Global
     Import-Module (Join-Path $modDir 'RocmRoll.CustomNodes.psm1') -Force -Global
     Import-Module (Join-Path $modDir 'RocmRoll.Packages.psm1')    -Force -Global
     Import-Module (Join-Path $modDir 'RocmRoll.Launcher.psm1')     -Force -Global
@@ -209,9 +211,10 @@ function Invoke-FullInstall {
         $cloneResult = Invoke-CloneComfyUIInstance -InstanceName $InstanceName `
             -Repo $channelCfg.comfyui.repo -Ref $channelCfg.comfyui.ref -Force:$Force
         Invoke-InstallComfyDeps -InstanceName $InstanceName -EnvironmentName $envName
-        Invoke-GenerateExtraModelPaths -InstanceName $InstanceName
+        # Discard return values so they don't leak into Invoke-FullInstall's own output.
+        Invoke-ApplyExtraModelPaths -InstanceName $InstanceName -Mode $(if ($IsUpdate) { 'Update' } else { 'Install' }) -Force:$Force | Out-Null
         if ($SharedWorkflows) {
-            Invoke-LinkSharedWorkflows -InstanceName $InstanceName
+            Invoke-LinkSharedWorkflows -InstanceName $InstanceName | Out-Null
         }
         Write-StepOk "ComfyUI ready (commit: $($cloneResult.commit))"
 

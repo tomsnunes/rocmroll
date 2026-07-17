@@ -38,6 +38,7 @@ TROUBLESHOOTING.md
 FAQ.md
 CONTRIBUTING.md
 docs\architecture.md
+docs\declarative-instances.md
 profiles\*.json
 source\rocmroll.ps1
 source\modules\*.psm1
@@ -47,6 +48,9 @@ source\patches\sageattention\*.json
 source\scripts\validate-rocm.py
 source\templates\*.tpl
 workspaces\*.json
+overlays\<name>\<name>.yaml    Optional declarative instance definitions
+overlays\<name>\environment\   Optional requirements.txt overlay
+overlays\<name>\instance\      Optional custom_nodes.json / extra_model_paths.yaml overlays
 ```
 
 Generated folders are created by `init` or `install`:
@@ -132,6 +136,7 @@ The command path is registry-driven:
 | `RocmRoll.Hardware` | AMD GPU detection and architecture mapping |
 | `RocmRoll.Rocm` | ROCm/PyTorch install planning, install, validation |
 | `RocmRoll.ComfyUI` | Git mirror, clone/update, requirements, model paths |
+| `RocmRoll.ModelPaths` | Drift-safe `extra_model_paths.yaml` generation, status classification, and mode-aware apply |
 | `RocmRoll.CustomNodes` | Instance-local custom node install/update |
 | `RocmRoll.Packages` | Performance package profile install and package patches |
 | `RocmRoll.ComfyPatch` | Managed text patches for ComfyUI source files |
@@ -143,12 +148,19 @@ The command path is registry-driven:
 | `RocmRoll.ComfyDesktop` | Optional ComfyUI Desktop registration |
 | `RocmRoll.UI` | Banner, step output, and summary formatting |
 | `RocmRoll.Core` | Full install orchestration |
+| `RocmRoll.YamlLite` | Minimal, dependency-free YAML subset reader for instance definitions |
+| `RocmRoll.InstanceDefinition` | ComfyUIInstance YAML schema parsing, validation, defaulting, and export (reverse-engineering a definition from an existing instance) |
+| `RocmRoll.InstancePlan` | Plan/apply/destroy engine comparing declared, recorded, and actual state |
 
 Implemented CLI commands:
 
 ```text
 init
 instance
+plan
+apply
+destroy
+import
 workspace
 doctor
 env
@@ -163,30 +175,77 @@ patch
 help
 ```
 
-## Custom Resources Overlay
+`plan`, `apply`, `destroy`, and `import` are top-level commands (siblings of `instance`, not subcommands of it) - see Declarative Instance Management below.
 
-ROCmRoll supports per-instance resource overlays in a `custom\` folder at the repository root. The folder is root-relative and not user-configurable via `rocmroll.ini`, following the same convention as `workspaces\`.
+## Instance Overlays
+
+ROCmRoll supports per-instance resource overlays in an `overlays\` folder at the repository root. The folder is root-relative and not user-configurable via `rocmroll.ini`, following the same convention as `workspaces\`. It is also where declarative instance YAML definitions live (see Declarative Instance Management below), and `RocmRoll.Config.Get-InstanceOverlayFolder`/`Get-InstanceOverlayEnvironmentFolder`/`Get-InstanceOverlayInstanceFolder` are the shared helpers every module uses to resolve into it, so the layout only needs to change in one place.
 
 ### Layout
 
 ```text
-custom\
+overlays\
   <instanceName>\
-    requirements.txt      Extra pip packages installed after ComfyUI requirements
-    custom_nodes.json     Extra custom nodes installed after the default manifest
+    <instanceName>.yaml        Optional declarative instance definition
+    environment\
+      requirements.txt         Extra pip packages installed after ComfyUI requirements
+    instance\
+      custom_nodes.json        Extra custom nodes installed after the default manifest
+      extra_model_paths.yaml   Overlay source for the instance's extra_model_paths.yaml
 ```
+
+`requirements.txt` sits under `environment\` because it affects the Python environment (pip installs); `custom_nodes.json` and `extra_model_paths.yaml` sit under `instance\` because they affect the ComfyUI instance itself - the same environment/instance ownership split described under Design above.
 
 ### Custom requirements
 
-`Invoke-InstallComfyDeps` (in `RocmRoll.ComfyUI`) checks for `custom\<instanceName>\requirements.txt` after installing ComfyUI's own `requirements.txt` and `manager_requirements.txt`. If the file exists it is installed with `pip install --upgrade-strategy only-if-needed -r <file>` using the shared pip cache. A failed install raises `ROCMROLL-COMFY-005`.
+`Invoke-InstallComfyDeps` (in `RocmRoll.ComfyUI`) checks for `overlays\<instanceName>\environment\requirements.txt` after installing ComfyUI's own `requirements.txt` and `manager_requirements.txt`. If the file exists it is installed with `pip install --upgrade-strategy only-if-needed -r <file>` using the shared pip cache. A failed install raises `ROCMROLL-COMFY-005`.
 
 Because the custom requirements block lives inside `Invoke-InstallComfyDeps` it is automatically executed by all call sites: full install, `comfyui requirements`, `instance update --comfyui`, and `instance repair --comfyui`.
 
 ### Custom nodes
 
-`Invoke-InstallCustomNodes` (in `RocmRoll.CustomNodes`) checks for `custom\<instanceName>\custom_nodes.json` after processing the global manifest. The file uses the same JSON schema (`{ "default": [ { name, repo, ref, installRequirements } ] }`). Each entry is processed by the shared `Invoke-ProcessNodeEntry` helper that handles clone, update, and requirements installation. Clone failures are non-fatal warnings.
+`Invoke-InstallCustomNodes` (in `RocmRoll.CustomNodes`) checks for `overlays\<instanceName>\instance\custom_nodes.json` after processing the global manifest. The file uses the same JSON schema (`{ "default": [ { name, repo, ref, installRequirements } ] }`). Each entry is processed by the shared `Invoke-ProcessNodeEntry` helper that handles clone, update, and requirements installation. Clone failures are non-fatal warnings.
 
 Because the custom nodes block lives inside `Invoke-InstallCustomNodes` it is automatically executed by all call sites: full install, `comfyui nodes --install`, `comfyui nodes --update`, and `instance repair --custom-nodes`.
+
+### Custom extra_model_paths.yaml overlay and preserve-on-update
+
+`RocmRoll.ModelPaths` owns `extra_model_paths.yaml` generation instead of `RocmRoll.ComfyUI` writing it unconditionally. `Get-ExtraModelPathsDesiredContent` resolves, in order: `overlays\<instanceName>\instance\extra_model_paths.yaml` if present, else `source\templates\extra_model_paths.yaml.tpl`, else a built-in default; `{SharedFolder}` is substituted in either case.
+
+`Get-ExtraModelPathsStatus` classifies the on-disk file against the `managedFiles.'extra_model_paths.yaml'` record in instance state (`contentHash`, `sourceHash`, `source`, `sourcePath`, `lastAppliedAt`):
+
+| Status | Meaning |
+| --- | --- |
+| `missing` | File does not exist |
+| `managed` | File matches what ROCmRoll last wrote and the source hasn't changed since |
+| `source-changed` | File still matches what ROCmRoll last wrote, but the overlay/template source changed since - safe to auto-refresh |
+| `custom-unknown` | File exists but has no `managedFiles` record |
+| `drifted` | File exists and its hash no longer matches the recorded `contentHash` (hand-edited, or the record is stale) |
+
+`Invoke-ApplyExtraModelPaths -Mode Install|Repair|Update|Apply` is mode-aware: `Update` always preserves an existing file (`custom-unknown`/`drifted` files are never touched by `--force` either, matching the acceptance criterion that update never destroys user data); `Install` replaces only with `-Force`; `Repair` regenerates `managed`/`source-changed` files automatically and prompts (`Invoke-ConfirmExtraModelPathsOverwrite`) before replacing `custom-unknown`/`drifted` ones unless `-Force`; `Apply` mirrors `Repair` but is driven by the plan engine's own destructive-approval gate instead of prompting a second time. `Invoke-GenerateExtraModelPaths` (in `RocmRoll.ComfyUI`) remains as a thin `-Mode Install` compatibility wrapper.
+
+## Declarative Instance Management
+
+ROCmRoll has two operation modes: an imperative one (the `instance` command family - `install`/`update`/`remove`/`launch`/`repair`/`list`/`info`) and a declarative one (`import`/`plan`/`apply`/`destroy`, `RocmRoll.InstanceDefinition` + `RocmRoll.InstancePlan`). The declarative commands are top-level, siblings of `instance` rather than subcommands of it, and they reuse the imperative pipeline under the hood instead of reimplementing it - see Terraform's `plan`/`apply` for the model this follows.
+
+`import` (`Get-InstanceDefinitionSnapshot` + `ConvertTo-InstanceDefinitionYaml` in `RocmRoll.InstanceDefinition`) reverse-engineers a YAML definition from an already-installed instance's recorded state and filesystem (overlay presence, symlinked shared workflows, environment GPU/runtime info) so existing instances don't need a hand-written definition to be planned/applied against; `spec.profile` is always written empty since it isn't persisted in instance state.
+
+A ComfyUIInstance YAML definition (default `overlays\<name>\<name>.yaml`, or `--file PATH`) is parsed by `RocmRoll.YamlLite` - a minimal, dependency-free block-mapping-and-scalars parser written for PowerShell 5.1, which has no built-in YAML support and this project avoids external module dependencies. It intentionally does not support YAML lists, flow style, or anchors; the schema doesn't need them. `RocmRoll.InstanceDefinition.Read-InstanceDefinition` validates `apiVersion`/`kind`/`metadata.name`/`spec.channel`, applies schema defaults (`pythonVersion`, `modelPaths.preserveOnUpdate: true`, `modelPaths.repairPolicy: confirm`, etc.), and collects unrecognized fields as non-fatal warnings.
+
+`Get-InstancePlan` compares three layers - the YAML definition (desired), ROCmRoll-recorded state (`.state\instances\instance-<name>.json`), and the actual filesystem/runtime (checkout `.git` marker, environment folder, recorded Python version, launcher file, `custom_nodes` contents) - and produces a classified action list (`NOOP`/`CREATE`/`UPDATE`/`REPAIR`/`REPLACE`/`DELETE`/`PRESERVE`/`WARNING`, each with a `destructive` flag; action ids include `modelPaths.extra_model_paths`, `comfyui.source`, `channel`, `pythonVersion`, `environment`, `launcher`, `customNodes.unmanaged`, `paths.shared`).
+
+`Invoke-InstanceApply` is capable of performing every action a full `instance install`/`instance update` can:
+
+- `extra_model_paths.yaml` (`modelPaths.extra_model_paths`) is always reconciled directly first, via `RocmRoll.ModelPaths` with the same preserve/overlay/destructive-approval semantics as imperative install/repair/update.
+- Anything needing the install/update pipeline - `environment`, `channel`, `pythonVersion`, or `comfyui.source` being `CREATE`/`UPDATE` - triggers a single call to `RocmRoll.Core.Invoke-FullInstall` (`-IsUpdate` when the instance already exists), the exact same function `instance install`/`instance update` use. This is what makes apply reuse the imperative subset instead of duplicating it, and it converges the same way re-running install/update already does.
+- A pending launcher-only `CREATE` (nothing else pending) is regenerated directly (`Invoke-GenerateLaunchers`) without paying for the full pipeline.
+- Informational `WARNING` actions (unmanaged custom nodes, a declared `paths.shared` mismatch) are never auto-applied.
+
+Destructive actions are blocked unless `--allow-destructive` or `spec.updatePolicy.allowDestructive: true` is set; non-destructive actions still prompt for confirmation unless `--auto-approve` or `spec.updatePolicy.requirePlan: false`. `apply` accepts `--file PATH` (compute and apply in one step) or `--plan PATH` (apply a plan previously saved by `plan --output`); `Test-InstancePlanStale` warns when a saved plan's actions no longer match what a fresh plan would produce.
+
+`Get-InstanceDestroyPlan`/`Invoke-InstanceDestroy` are the teardown counterpart: `Get-InstanceDestroyPlan` builds a `DELETE`/`PRESERVE` action list (checkout, environment, launcher, patch state, and ComfyUI Desktop registration as `DELETE`; shared assets and the instance's `overlays\<name>\` folder as `PRESERVE`) in the same shape `Get-InstancePlan` produces, so `Format-InstancePlanText`/`ConvertTo-InstancePlanJson` render it unchanged. `Invoke-InstanceDestroy` then calls `RocmRoll.Instance.Remove-RocmRollInstance` - the same function `instance remove --all` uses - so `destroy` reuses that removal pipeline rather than reimplementing it, mirroring how `apply` reuses `Invoke-FullInstall`. Because destruction is irreversible, confirmation requires typing the instance's exact name rather than a plain `y`/`N`, unless `--auto-approve` is passed; `--dry-run` shows the plan without prompting or deleting anything.
+
+See [declarative-instances.md](declarative-instances.md) for the full schema, CLI reference, and worked examples.
 
 ## Install Pipeline
 
@@ -222,7 +281,7 @@ Channels live in `source\manifests\channels.json`.
 
 | Channel | ComfyUI ref | ROCm source | Default profile | Notes |
 | --- | --- | --- | --- | --- |
-| `stable` | `v0.27.0` | AMD ROCm 7.2.1 direct URLs | `stable` | Pinned release wheels tagged `cp312`; requires Python 3.12 |
+| `stable` | `v0.28.0` | AMD ROCm 7.2.1 direct URLs | `stable` | Pinned release wheels tagged `cp312`; requires Python 3.12 |
 | `preview` | `master` | `https://rocm.nightlies.amd.com/whl-multi-arch/` | `optimized` | Promoted multi-arch wheel index; GPU selection via pip extras, not a per-family URL |
 | `nightly` | `master` | `https://rocm.nightlies.amd.com/whl-staging-multi-arch/` | `optimized` | Staging multi-arch index; same mechanism as preview, more volatile |
 | `legacy` | `master` | `https://rocm.nightlies.amd.com/v2/<rocmIndex>/` | `optimized` | Per-GPU-family v2 index (pre-multi-arch scheme) |
@@ -376,6 +435,8 @@ Supported text operations are `comment-line`, `comment-block`, and `replace-text
 ## Execution Profiles And Launchers
 
 Execution profiles are JSON files under the configured `profiles` folder. The generated launcher loads one profile at runtime, applies profile environment variables after fixed ROCm infrastructure variables, and appends profile launch arguments after fixed ComfyUI path/port arguments.
+
+Profile lookup is two-tier: the configured/workspace `profiles` folder is checked first, and if a requested profile isn't found there, ROCmRoll falls back to its own built-in `<RootFolder>\profiles` (never workspace-redirectable, same precedent as `overlays\`). This matters because a workspace can fully redirect `profiles` to a location that doesn't contain ROCmRoll's shipped profiles (`stable.json`, `optimized.json`, etc.) - without the fallback, every built-in profile would be invisible once such a workspace is active. `profile create` and `profile remove` are scoped to the primary/configured folder only: new profiles are never written to the fallback, and removal can never delete a shipped built-in. Generated launchers carry both paths (`{ProfilesFolder}` and `{ProfilesRootFallback}`) and apply the same fallback at runtime.
 
 Profile commands:
 

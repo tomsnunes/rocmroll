@@ -125,11 +125,13 @@ function Invoke-RepairComfyUi {
         [string]$InstanceName,
         [string]$EnvironmentName,
         [object]$InstanceState,
-        [switch]$SharedWorkflows
+        [switch]$SharedWorkflows,
+        [switch]$Force
     )
 
     Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force -Global
     Import-Module (Join-Path $PSScriptRoot 'RocmRoll.ComfyUI.psm1') -Force
+    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.ModelPaths.psm1') -Force
     $cfg = Get-Config
     $instancePath = if ($InstanceState -and $InstanceState.PSObject.Properties['path'] -and $InstanceState.path) {
         [string]$InstanceState.path
@@ -150,7 +152,7 @@ function Invoke-RepairComfyUi {
             -Ref $channelConfig.comfyui.ref | Out-Null
     }
     Invoke-InstallComfyDeps -InstanceName $InstanceName -EnvironmentName $EnvironmentName
-    Invoke-GenerateExtraModelPaths -InstanceName $InstanceName
+    Invoke-ApplyExtraModelPaths -InstanceName $InstanceName -Mode 'Repair' -Force:$Force
     if ($SharedWorkflows) {
         Invoke-LinkSharedWorkflows -InstanceName $InstanceName
     }
@@ -240,7 +242,8 @@ function Invoke-RepairComponent {
         [string]$Component = 'all',
         [string]$RollbackPatch = '',
         [string]$ProfileName = '',
-        [switch]$SharedWorkflows
+        [switch]$SharedWorkflows,
+        [switch]$Force
     )
 
     Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force -Global
@@ -267,14 +270,14 @@ function Invoke-RepairComponent {
             }
             Invoke-RepairRocmPackages -InstanceName $InstanceName -InstanceState $state -RuntimeVersion $runtimeVersion -PreRepairGpu $preRepairGpu
         }
-        'comfyui'        { Invoke-RepairComfyUi -InstanceName $InstanceName -EnvironmentName $state.environment -InstanceState $state -SharedWorkflows:$SharedWorkflows }
+        'comfyui'        { Invoke-RepairComfyUi -InstanceName $InstanceName -EnvironmentName $state.environment -InstanceState $state -SharedWorkflows:$SharedWorkflows -Force:$Force }
         'custom-nodes'   { Invoke-RepairCustomNodes -InstanceName $InstanceName -EnvironmentName $state.environment }
         'launchers'      { Invoke-RepairLaunchers -InstanceName $InstanceName -InstanceState $state -ProfileName $ProfileName }
         'patches'        { Invoke-RepairComfyPatches -InstanceName $InstanceName -GpuState $preRepairGpu }
         'all' {
             Invoke-RepairPythonEnvironment -EnvironmentName $state.environment -RuntimeVersion $runtimeVersion -InstanceName $InstanceName
             Invoke-RepairRocmPackages -InstanceName $InstanceName -InstanceState $state -RuntimeVersion $runtimeVersion -PreRepairGpu $preRepairGpu
-            Invoke-RepairComfyUi -InstanceName $InstanceName -EnvironmentName $state.environment -InstanceState $state -SharedWorkflows:$SharedWorkflows
+            Invoke-RepairComfyUi -InstanceName $InstanceName -EnvironmentName $state.environment -InstanceState $state -SharedWorkflows:$SharedWorkflows -Force:$Force
             Invoke-RepairCustomNodes -InstanceName $InstanceName -EnvironmentName $state.environment
             Invoke-RepairLaunchers -InstanceName $InstanceName -InstanceState $state -ProfileName $ProfileName
             Invoke-RepairComfyPatches -InstanceName $InstanceName -GpuState $preRepairGpu

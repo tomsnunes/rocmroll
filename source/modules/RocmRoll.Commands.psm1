@@ -81,6 +81,180 @@ function Invoke-RocmRollInstanceCommand {
     }
 }
 
+function Resolve-RocmRollInstanceDefinitionPath {
+    <#
+    .SYNOPSIS
+        Resolves the ComfyUIInstance YAML definition path for plan/apply/destroy:
+        --file if given, else the default overlays\<name>\<name>.yaml for --name.
+        Exits with a clear error if neither resolves to an existing file.
+    #>
+    param([Parameter(Mandatory)][object]$Context)
+
+    Import-RocmRollCommandModules -ModulesDir $Context.ModulesDir -Names @('RocmRoll.InstanceDefinition')
+
+    $path = if ($Context.DefinitionFile) {
+        $Context.DefinitionFile
+    } elseif ($Context.InstanceName) {
+        Get-InstanceDefinitionPath -InstanceName $Context.InstanceName
+    } else {
+        ''
+    }
+
+    if (-not $path -or -not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        Write-Host ''
+        if ($path) {
+            Write-Host "  ERROR  Instance definition file not found: $path" -ForegroundColor Red
+        } else {
+            Write-Host '  ERROR  Provide --file PATH or --name NAME (overlays\NAME\NAME.yaml).' -ForegroundColor Red
+        }
+        Write-Host ''
+        exit 1
+    }
+
+    return $path
+}
+
+function Invoke-RocmRollPlanCommand {
+    param([Parameter(Mandatory)][object]$Context)
+    Import-RocmRollCommandModules -ModulesDir $Context.ModulesDir -Names @(
+        'RocmRoll.InstanceDefinition', 'RocmRoll.InstancePlan'
+    )
+
+    $definitionPath = Resolve-RocmRollInstanceDefinitionPath -Context $Context
+    $definition = Read-InstanceDefinition -FilePath $definitionPath
+    foreach ($warning in $definition.Warnings) {
+        Write-LogWarn $warning -Comp 'RocmRoll.InstanceDefinition' -Inst $definition.Name
+    }
+
+    $plan = Get-InstancePlan -Definition $definition
+
+    if ($Context.FlagJson) {
+        ConvertTo-InstancePlanJson -Plan $plan
+    } else {
+        Format-InstancePlanText -Plan $plan
+    }
+
+    if ($Context.OutputPath) {
+        Save-InstancePlan -Plan $plan -Path $Context.OutputPath | Out-Null
+        Write-Host "  Plan written to: $($Context.OutputPath)" -ForegroundColor Green
+        Write-Host ''
+    }
+}
+
+function Invoke-RocmRollApplyCommand {
+    param([Parameter(Mandatory)][object]$Context)
+    Import-RocmRollCommandModules -ModulesDir $Context.ModulesDir -Names @(
+        'RocmRoll.InstanceDefinition', 'RocmRoll.InstancePlan'
+    )
+
+    $definitionPath = Resolve-RocmRollInstanceDefinitionPath -Context $Context
+    $definition = Read-InstanceDefinition -FilePath $definitionPath
+    foreach ($warning in $definition.Warnings) {
+        Write-LogWarn $warning -Comp 'RocmRoll.InstanceDefinition' -Inst $definition.Name
+    }
+
+    if ($Context.PlanFile) {
+        if (-not (Test-Path -LiteralPath $Context.PlanFile -PathType Leaf)) {
+            Write-Host ''
+            Write-Host "  ERROR  Plan file not found: $($Context.PlanFile)" -ForegroundColor Red
+            Write-Host ''
+            exit 1
+        }
+        $savedPlanJson = Get-Content -LiteralPath $Context.PlanFile -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ([string]$savedPlanJson.instance -ne $definition.Name) {
+            Write-Host ''
+            Write-Host "  ERROR  Plan file '$($Context.PlanFile)' was generated for instance '$($savedPlanJson.instance)', not '$($definition.Name)'." -ForegroundColor Red
+            Write-Host ''
+            exit 1
+        }
+        $plan = [pscustomobject]@{
+            ApiVersion = [string]$savedPlanJson.apiVersion
+            Kind       = [string]$savedPlanJson.kind
+            Instance   = [string]$savedPlanJson.instance
+            CreatedAt  = [string]$savedPlanJson.createdAt
+            Actions    = @($savedPlanJson.actions | ForEach-Object {
+                [pscustomobject]@{ Id = [string]$_.id; Type = [string]$_.type; Target = [string]$_.target; Reason = [string]$_.reason; Destructive = [bool]$_.destructive }
+            })
+        }
+        if (Test-InstancePlanStale -Definition $definition -SavedPlan $plan) {
+            Write-LogWarn "Saved plan '$($Context.PlanFile)' no longer matches current state/definition; the actions below may be stale." -Comp 'RocmRoll.InstancePlan' -Inst $definition.Name
+        }
+    } else {
+        $plan = Get-InstancePlan -Definition $definition
+    }
+
+    $result = Invoke-InstanceApply -Definition $definition -Plan $plan `
+        -AutoApprove:$Context.FlagAutoApprove -AllowDestructive:$Context.FlagAllowDestructive -DryRun:$Context.FlagDryRun
+
+    if ($result.Blocked.Count -gt 0) { exit 3 }
+}
+
+function Invoke-RocmRollDestroyCommand {
+    param([Parameter(Mandatory)][object]$Context)
+    Import-RocmRollCommandModules -ModulesDir $Context.ModulesDir -Names @(
+        'RocmRoll.InstanceDefinition', 'RocmRoll.InstancePlan'
+    )
+
+    $definitionPath = Resolve-RocmRollInstanceDefinitionPath -Context $Context
+    $definition = Read-InstanceDefinition -FilePath $definitionPath
+    foreach ($warning in $definition.Warnings) {
+        Write-LogWarn $warning -Comp 'RocmRoll.InstanceDefinition' -Inst $definition.Name
+    }
+
+    $plan = Get-InstanceDestroyPlan -InstanceName $definition.Name
+
+    if ($Context.FlagJson) {
+        ConvertTo-InstancePlanJson -Plan $plan
+    } else {
+        Format-InstancePlanText -Plan $plan
+    }
+
+    if ($Context.FlagDryRun) { return }
+
+    $result = Invoke-InstanceDestroy -Definition $definition -Plan $plan -AutoApprove:$Context.FlagAutoApprove
+    if ($result.Cancelled) { exit 1 }
+}
+
+function Invoke-RocmRollImportCommand {
+    param([Parameter(Mandatory)][object]$Context)
+    Import-RocmRollCommandModules -ModulesDir $Context.ModulesDir -Names @(
+        'RocmRoll.InstanceDefinition', 'RocmRoll.InstancePlan'
+    )
+
+    $targetPath = if ($Context.OutputPath) { $Context.OutputPath } else { Get-InstanceDefinitionPath -InstanceName $Context.InstanceName }
+    if ((Test-Path -LiteralPath $targetPath -PathType Leaf) -and -not $Context.FlagForce) {
+        Write-Host ''
+        Write-Host "  ERROR  Definition file already exists: $targetPath" -ForegroundColor Red
+        Write-Host '  Use --force to overwrite, or --output PATH to write elsewhere.' -ForegroundColor DarkGray
+        Write-Host ''
+        exit 1
+    }
+
+    try {
+        $writtenPath = Export-InstanceDefinition -InstanceName $Context.InstanceName -OutPath $targetPath -Force:$Context.FlagForce
+    } catch {
+        Write-Host ''
+        Write-Host "  ERROR  $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host ''
+        exit 1
+    }
+
+    Write-Host ''
+    Write-Host "  Imported '$($Context.InstanceName)' -> $writtenPath" -ForegroundColor Green
+
+    $definition = Read-InstanceDefinition -FilePath $writtenPath
+    foreach ($warning in $definition.Warnings) {
+        Write-LogWarn $warning -Comp 'RocmRoll.InstanceDefinition' -Inst $definition.Name
+    }
+
+    Write-Host ''
+    Write-Host '  Verifying the import with a plan (expect mostly NOOP/PRESERVE):' -ForegroundColor Cyan
+    $plan = Get-InstancePlan -Definition $definition
+    Format-InstancePlanText -Plan $plan
+    Write-Host "  Edit $writtenPath to adjust spec.profile, spec.updatePolicy, or overlay sources before running 'rocmroll apply'." -ForegroundColor DarkGray
+    Write-Host ''
+}
+
 function Invoke-RocmRollInstanceInstallCommand {
     param([Parameter(Mandatory)][object]$Context)
     Import-RocmRollCommandModules -ModulesDir $Context.ModulesDir -Names @('RocmRoll.Core')
@@ -101,7 +275,7 @@ function Invoke-RocmRollInstanceUpdateCommand {
     if ($updateAll) {
         $defaults = Get-RocmRollUpdateDefaults -InstanceName $Context.InstanceName
         Invoke-FullInstall -InstanceName $Context.InstanceName -Channel $defaults.Channel `
-            -PythonVersion $defaults.PythonVersion -Force:$Context.FlagForce
+            -PythonVersion $defaults.PythonVersion -Force:$Context.FlagForce -IsUpdate
         return
     }
 
@@ -120,10 +294,10 @@ function Invoke-RocmRollInstanceRepairCommand {
     $scopes = @(Get-RocmRollInstanceComponentScopes -Context $Context)
     foreach ($scope in $scopes) {
         switch ($scope) {
-            'environment' { Invoke-RepairComponent -InstanceName $Context.InstanceName -Component 'python-env' }
-            'rocm'        { Invoke-RepairComponent -InstanceName $Context.InstanceName -Component 'rocm' }
-            'comfyui'     { Invoke-RepairComponent -InstanceName $Context.InstanceName -Component 'comfyui' }
-            'patches'     { Invoke-RepairComponent -InstanceName $Context.InstanceName -Component 'patches' }
+            'environment' { Invoke-RepairComponent -InstanceName $Context.InstanceName -Component 'python-env' -Force:$Context.FlagForce }
+            'rocm'        { Invoke-RepairComponent -InstanceName $Context.InstanceName -Component 'rocm' -Force:$Context.FlagForce }
+            'comfyui'     { Invoke-RepairComponent -InstanceName $Context.InstanceName -Component 'comfyui' -Force:$Context.FlagForce }
+            'patches'     { Invoke-RepairComponent -InstanceName $Context.InstanceName -Component 'patches' -Force:$Context.FlagForce }
         }
     }
 }
@@ -539,7 +713,7 @@ function Restore-RocmRollGitFiles {
 function Invoke-RocmRollComfyUiCommand {
     param([Parameter(Mandatory)][object]$Context)
     Import-RocmRollCommandModules -ModulesDir $Context.ModulesDir -Names @(
-        'RocmRoll.State','RocmRoll.ComfyUI','RocmRoll.CustomNodes',
+        'RocmRoll.State','RocmRoll.ComfyUI','RocmRoll.ModelPaths','RocmRoll.CustomNodes',
         'RocmRoll.ComfyPatch','RocmRoll.Utilities','RocmRoll.Logging'
     )
     $cfg = Get-Config
@@ -665,7 +839,7 @@ function Invoke-RocmRollComfyUiCommand {
 
             $updateResult = Invoke-UpdateComfyUIInstance -InstanceName $Context.InstanceName -Repo $repo -Ref $ref
             Invoke-InstallComfyDeps -InstanceName $Context.InstanceName -EnvironmentName $envName
-            Invoke-GenerateExtraModelPaths -InstanceName $Context.InstanceName | Out-Null
+            Invoke-ApplyExtraModelPaths -InstanceName $Context.InstanceName -Mode 'Update' | Out-Null
 
             $stateFile = Get-StateFilePath -Type 'instance' -Name $Context.InstanceName
             $stateHash = ConvertTo-StateHashtable -InputObject $instState
@@ -960,7 +1134,7 @@ function Invoke-RocmRollProfileCommand {
     $cfg = Get-Config
     switch ($Context.SubCommand) {
         'list' {
-            $all = Get-ProfileList -Config $cfg
+            $all = @(Get-ProfileList -Config $cfg)
             if ($all.Count -eq 0) {
                 Write-Host ''
                 Write-Host "  No profiles found in: $($cfg.ProfilesFolder)" -ForegroundColor Yellow
@@ -997,8 +1171,9 @@ function Invoke-RocmRollProfileCommand {
             }
 
             $profileName = if ($Context.ProfileName) {
-                $profilePath = Join-Path $cfg.ProfilesFolder "$($Context.ProfileName).json"
-                if (-not (Test-Path -LiteralPath $profilePath -PathType Leaf)) {
+                try {
+                    Get-ProfilePath -Name $Context.ProfileName -Config $cfg | Out-Null
+                } catch {
                     Write-Host ''
                     Write-Host "  ERROR  Unknown profile: '$($Context.ProfileName)'" -ForegroundColor Red
                     Write-Host "  Run 'rocmroll profile list' to see available profiles." -ForegroundColor DarkGray
@@ -1158,4 +1333,5 @@ Export-ModuleMember -Function Invoke-RocmRollInitCommand, Invoke-RocmRollInstanc
     Invoke-RocmRollCacheCommand, Invoke-RocmRollEnvCommand, Invoke-RocmRollStateCommand,
     Invoke-RocmRollLogsCommand, Invoke-RocmRollConfigCommand,
     Invoke-RocmRollProfileCommand, Invoke-RocmRollPatchCommand, Invoke-RocmRollWorkspaceCommand,
-    Invoke-RocmRollHelpCommand
+    Invoke-RocmRollHelpCommand,
+    Invoke-RocmRollPlanCommand, Invoke-RocmRollApplyCommand, Invoke-RocmRollDestroyCommand, Invoke-RocmRollImportCommand

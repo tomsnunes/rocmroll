@@ -121,10 +121,16 @@ if ($HsaOverrideGfxVersion -ine 'gfx1100' -and (Test-Path $RocmSdkDevelFolder)) 
 # ---------------------------------------------------------------------------
 # Profile loading
 # ---------------------------------------------------------------------------
-$ProfilesFolder = '{ProfilesFolder}'
+$ProfilesFolder       = '{ProfilesFolder}'
+$ProfilesRootFallback = '{ProfilesRootFallback}'
 $ActiveProfile  = if ($ProfileArg) { $ProfileArg } else { '{ProfileName}' }
 $ProfileJson    = Join-Path $ProfilesFolder "$ActiveProfile.json"
 $LoadedProfile  = $null
+
+if ((-not (Test-Path $ProfileJson)) -and $ProfilesRootFallback -and ($ProfilesRootFallback -ine $ProfilesFolder)) {
+    $FallbackProfileJson = Join-Path $ProfilesRootFallback "$ActiveProfile.json"
+    if (Test-Path $FallbackProfileJson) { $ProfileJson = $FallbackProfileJson }
+}
 
 if (Test-Path $ProfileJson) {
     try {
