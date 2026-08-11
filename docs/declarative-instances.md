@@ -99,7 +99,7 @@ spec:
 
   comfyui:
     repo: https://github.com/Comfy-Org/ComfyUI.git
-    ref: v0.29.0
+    ref: v0.31.0
 
   modelPaths:
     source: overlay
@@ -201,7 +201,7 @@ Plan: rocm-stable
 
   UPDATE    comfyui.source
             Current ref: master
-            Desired ref: v0.29.0
+            Desired ref: v0.31.0
 
   NOOP      environment
             Python environment present.
