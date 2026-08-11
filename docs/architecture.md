@@ -281,7 +281,7 @@ Channels live in `source\manifests\channels.json`.
 
 | Channel | ComfyUI ref | ROCm source | Default profile | Notes |
 | --- | --- | --- | --- | --- |
-| `stable` | `v0.28.0` | AMD ROCm 7.2.1 direct URLs | `stable` | Pinned release wheels tagged `cp312`; requires Python 3.12 |
+| `stable` | `v0.31.0` | AMD ROCm 7.2.1 direct URLs | `stable` | Pinned release wheels tagged `cp312`; requires Python 3.12 |
 | `preview` | `master` | `https://rocm.nightlies.amd.com/whl-multi-arch/` | `optimized` | Promoted multi-arch wheel index; GPU selection via pip extras, not a per-family URL |
 | `nightly` | `master` | `https://rocm.nightlies.amd.com/whl-staging-multi-arch/` | `optimized` | Staging multi-arch index; same mechanism as preview, more volatile |
 | `legacy` | `master` | `https://rocm.nightlies.amd.com/v2/<rocmIndex>/` | `optimized` | Per-GPU-family v2 index (pre-multi-arch scheme) |
