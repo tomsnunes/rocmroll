@@ -5,7 +5,7 @@
     "comfyui": {
       "source": "git",
       "repo": "https://github.com/Comfy-Org/ComfyUI.git",
-      "ref": "v0.31.0",
+      "ref": "v0.33.0",
       "pinCommit": null
     },
     "python": {
@@ -34,8 +34,7 @@
       }
     },
     "packages": {
-      "tritonWindows": "3.7.1.post27",
-      "sageAttention": "1.0.6"
+      "tritonWindows": "3.7.1.post27"
     }
   },
   "preview": {
@@ -76,8 +75,7 @@
       ]
     },
     "packages": {
-      "tritonWindows": "3.7.1.post27",
-      "sageAttention": "1.0.6"
+      "tritonWindows": "3.7.1.post27"
     }
   },
   "nightly": {
@@ -118,8 +116,7 @@
       ]
     },
     "packages": {
-      "tritonWindows": "3.7.1.post27",
-      "sageAttention": "1.0.6"
+      "tritonWindows": "3.7.1.post27"
     }
   },
   "legacy": {
@@ -161,8 +158,7 @@
       ]
     },
     "packages": {
-      "tritonWindows": "3.7.1.post27",
-      "sageAttention": "1.0.6"
+      "tritonWindows": "3.7.1.post27"
     }
   },
   "legacy-staging": {
@@ -204,8 +200,7 @@
       ]
     },
     "packages": {
-      "tritonWindows": "3.7.1.post27",
-      "sageAttention": "1.0.6"
+      "tritonWindows": "3.7.1.post27"
     }
   }
 }
