@@ -14,8 +14,8 @@
       },
       {
         "name": "sageattention",
-        "version": "1.0.6",
-        "source": "pypi",
+        "source": "url",
+        "url": "https://github.com/patientx/sageattention-autotune/releases/download/0908/sageattention-2.2.0-py3-none-any.whl",
         "required": true,
         "patches": ["sageattention-zluda-rdna"]
       },
