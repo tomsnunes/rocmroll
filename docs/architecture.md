@@ -273,7 +273,7 @@ The flow is:
 Channel switching during install is manifest-driven by two optional per-family booleans in `rocm-architectures.json` (absent means `true`):
 
 - `stableSupported: false` (`gfx101X`, `gfx103X`): `stable` automatically switches to `preview` because AMD publishes no official Windows stable release wheels for these families.
-- `multiArchSupported: false` (`gfx94X`, `gfx950`): multi-arch channels (`preview`, `nightly`) automatically switch to `legacy-staging` because AMD does not publish multi-arch Windows wheels for these families yet.
+- `multiArchSupported: false` (`gfx94X`, `gfx950`): multi-arch channels (`preview`, `nightly`, `next`) automatically switch to `legacy-staging` because AMD does not publish multi-arch Windows wheels for these families yet.
 
 ## Channels And ROCm Planning
 
@@ -281,9 +281,10 @@ Channels live in `source\manifests\channels.json`.
 
 | Channel | ComfyUI ref | ROCm source | Default profile | Notes |
 | --- | --- | --- | --- | --- |
-| `stable` | `v0.33.0` | AMD ROCm 7.2.1 direct URLs | `stable` | Pinned release wheels tagged `cp312`; requires Python 3.12 |
+| `stable` | `v0.35.0` | AMD ROCm 7.2.1 direct URLs | `stable` | Pinned release wheels tagged `cp312`; requires Python 3.12 |
 | `preview` | `master` | `https://rocm.nightlies.amd.com/whl-multi-arch/` | `optimized` | Promoted multi-arch wheel index; GPU selection via pip extras, not a per-family URL |
 | `nightly` | `master` | `https://rocm.nightlies.amd.com/whl-staging-multi-arch/` | `optimized` | Staging multi-arch index; same mechanism as preview, more volatile |
+| `next` | `master` | `https://nightly.repo.amd.com/rocm/whl-next/` | `optimized` | AMD's newest multi-arch index; pre-release packages allowed, more volatile than nightly |
 | `legacy` | `master` | `https://rocm.nightlies.amd.com/v2/<rocmIndex>/` | `optimized` | Per-GPU-family v2 index (pre-multi-arch scheme) |
 | `legacy-staging` | `master` | `https://rocm.nightlies.amd.com/v2-staging/<rocmIndex>/` | `optimized` | Per-GPU-family v2-staging index; auto-switch target for gfx94X/gfx950 |
 
@@ -401,7 +402,7 @@ Current default nodes:
 
 Performance packages are defined in `source\manifests\package-profiles.json`. The full install applies `rocm-performance`, which currently contains:
 
-- `triton-windows==3.7.1.post27`
+- `triton-windows==3.8.0.post28`
 - `sageattention==1.0.6`
 - `bitsandbytes` from a release wheel URL, skipped on `gfx90X`, `gfx94X`, and `gfx950`
 - `flash-attn` from a release wheel URL

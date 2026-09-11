@@ -239,9 +239,10 @@ Channels are defined in `source\manifests\channels.json`.
 
 | Channel | ComfyUI ref | ROCm source | Default profile | Notes |
 | --- | --- | --- | --- | --- |
-| `stable` | `v0.33.0` | AMD ROCm 7.2.1 direct URLs | `stable` | Pinned ROCmRoll baseline; Python 3.12 required |
+| `stable` | `v0.35.0` | AMD ROCm 7.2.1 direct URLs | `stable` | Pinned ROCmRoll baseline; Python 3.12 required |
 | `preview` | `master` | `https://rocm.nightlies.amd.com/whl-multi-arch/` | `optimized` | AMD's unified multi-arch wheel index (promoted) |
 | `nightly` | `master` | `https://rocm.nightlies.amd.com/whl-staging-multi-arch/` | `optimized` | Staging multi-arch index; more volatile than preview |
+| `next` | `master` | `https://nightly.repo.amd.com/rocm/whl-next/` | `optimized` | AMD's newest multi-arch index; pre-release packages allowed, more cutting-edge and volatile than `nightly` |
 | `legacy` | `master` | `https://rocm.nightlies.amd.com/v2/<rocmIndex>/` | `optimized` | Per-GPU-family v2 index (pre-multi-arch scheme) |
 | `legacy-staging` | `master` | `https://rocm.nightlies.amd.com/v2-staging/<rocmIndex>/` | `optimized` | Per-GPU-family v2-staging index; serves gfx942/gfx950 |
 
@@ -253,7 +254,7 @@ Stable currently installs:
 - torchvision `0.24.1+rocm7.2.1`
 - torchaudio `2.9.1+rocm7.2.1`
 
-`preview` and `nightly` install from AMD's unified multi-arch wheel indexes. Those are single flat package indexes covering every supported GPU rather than one folder per family, so package selection happens through pip extras keyed to the exact GPU chip instead of the index URL: `torch[device-gfx1100]`, `torchvision[device-gfx1100]`, `torchaudio`, `rocm[libraries,devel,device-gfx1100]`. ROCmRoll resolves the exact chip (not just the GPU family) automatically during detection - see "Supported GPU Families" below. `preview` uses the promoted index, `nightly` the staging index, mirroring the old `v2`/`v2-staging` split.
+`preview`, `nightly`, and `next` install from AMD's unified multi-arch wheel indexes. Those are single flat package indexes covering every supported GPU rather than one folder per family, so package selection happens through pip extras keyed to the exact GPU chip instead of the index URL: `torch[device-gfx1100]`, `torchvision[device-gfx1100]`, `torchaudio`, `rocm[libraries,devel,device-gfx1100]`. ROCmRoll resolves the exact chip (not just the GPU family) automatically during detection - see "Supported GPU Families" below. `preview` uses the promoted index, `nightly` the staging index, and `next` AMD's newest `whl-next` index, mirroring the old `v2`/`v2-staging` split with an additional, more volatile tier on top.
 
 `legacy` and `legacy-staging` keep the older per-GPU-family index scheme (`v2`/`v2-staging` plus a `rocmIndex` folder such as `gfx110X-all`), installing generic `torch`, `torchvision`, `torchaudio`, and `rocm[libraries,devel]`. They exist as a fallback for GPUs not yet published on the multi-arch indexes and for anyone who needs the previous behavior.
 
@@ -264,9 +265,9 @@ Channel switching is manifest-driven through two optional per-family flags in `s
 | Flag | Families | Effect |
 | --- | --- | --- |
 | `stableSupported: false` | `gfx101X` (RDNA 1), `gfx103X` (RDNA 2) | `--channel stable` automatically switches to `preview`; AMD publishes no official Windows stable release wheels for these families |
-| `multiArchSupported: false` | `gfx94X` (MI300/MI325), `gfx950` (MI350/MI355) | `--channel preview`/`nightly` automatically switches to `legacy-staging`; AMD does not publish multi-arch Windows wheels for these families yet |
+| `multiArchSupported: false` | `gfx94X` (MI300/MI325), `gfx950` (MI350/MI355) | `--channel preview`/`nightly`/`next` automatically switches to `legacy-staging`; AMD does not publish multi-arch Windows wheels for these families yet |
 
-RDNA 1 and RDNA 2 are experimental on Windows ROCm and now install from the multi-arch `preview`/`nightly` channels like every other supported family. The former dedicated `rdna1`/`rdna2` channels were removed; instances installed with them are transparently treated as `preview` (see "Channel Migration" below).
+RDNA 1 and RDNA 2 are experimental on Windows ROCm and now install from the multi-arch `preview`/`nightly`/`next` channels like every other supported family. The former dedicated `rdna1`/`rdna2` channels were removed; instances installed with them are transparently treated as `preview` (see "Channel Migration" below).
 
 ### Channel Migration
 
@@ -595,7 +596,7 @@ Common command-specific options:
 | Option | Used by |
 | --- | --- |
 | `--workspace NAME` | Commands whose help explicitly lists workspace selection |
-| `--channel stable\|preview\|nightly\|legacy\|legacy-staging` | Instance install and list filtering |
+| `--channel stable\|preview\|nightly\|next\|legacy\|legacy-staging` | Instance install and list filtering |
 | `--python VERSION` | Instance install; default `3.12.10` |
 | `--name NAME` | Instance aggregate commands, `plan`/`apply`/`destroy`/`import`, and workspace, environment, or profile commands |
 | `--instance NAME` | Doctor, ROCm, ComfyUI, `profile apply`, and patch commands |
@@ -616,6 +617,7 @@ Common command-specific options:
 .\rocmroll.bat instance install --name rocm-stable
 .\rocmroll.bat instance install --name rocm-preview --channel preview
 .\rocmroll.bat instance install --name rocm-nightly --channel nightly
+.\rocmroll.bat instance install --name rocm-next --channel next
 
 # Launch
 .\rocmroll.bat instance launch --name rocm-stable
@@ -688,7 +690,7 @@ The full install applies the `rocm-performance` profile from `source\manifests\p
 
 Current performance packages:
 
-- `triton-windows==3.7.1.post27`
+- `triton-windows==3.8.0.post28`
 - `sageattention` from a release wheel URL
 - `bitsandbytes` from a release wheel URL
 - `flash-attn` from a release wheel URL
