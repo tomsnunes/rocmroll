@@ -8,7 +8,7 @@
     "packages": [
       {
         "name": "triton-windows",
-        "version": "3.7.1.post27",
+        "version": "3.8.0.post28",
         "source": "pypi",
         "required": true
       },
