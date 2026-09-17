@@ -206,11 +206,13 @@ function Test-ComfyPatchApplicable {
         return $false
     }
     $envState = Get-EnvironmentState -Name ([string]$instState.environment)
-    if (-not $envState -or -not $envState.gpu) {
+    $gpuProp  = if ($envState) { $envState.PSObject.Properties['gpu'] } else { $null }
+    $gfxProp  = if ($gpuProp -and $gpuProp.Value) { $gpuProp.Value.PSObject.Properties['gfx'] } else { $null }
+    if (-not $gfxProp -or -not $gfxProp.Value) {
         Write-LogWarn "GPU info not found in environment state for '$($instState.environment)'" -Comp 'RocmRoll.ComfyPatch'
         return $false
     }
-    $gfx = [string]$envState.gpu.gfx
+    $gfx = [string]$gfxProp.Value
     return (@($arch) -contains $gfx)
 }
 
