@@ -44,6 +44,8 @@ function Invoke-FullInstall {
         [string]$PythonVersion    = '3.12.10',
         [string]$GfxOverride      = '',
         [string]$ProfileName      = '',
+        [string]$PackageProfile   = '',
+        [string]$CustomNodeSet    = '',
         [switch]$Force,
         [switch]$SharedWorkflows,
         [switch]$IsUpdate
@@ -88,6 +90,22 @@ function Invoke-FullInstall {
     # Capture any existing ComfyUI Desktop registration ID before overwriting state
     $priorState        = Get-InstanceState -Name $InstanceName
     $existingDesktopId = if ($priorState -and $priorState.PSObject.Properties['comfyDesktopId']) { [string]$priorState.comfyDesktopId } else { '' }
+
+    # Package profile: explicit request > profile recorded for this instance > default.
+    # Validated up front so a typo fails before anything is downloaded or built.
+    if (-not $PackageProfile) {
+        $recorded = if ($priorState -and $priorState.PSObject.Properties['packageProfile']) { [string]$priorState.packageProfile } else { '' }
+        $PackageProfile = if ($recorded) { $recorded } else { Get-DefaultPackageProfileName }
+    }
+    Assert-PackageProfileName -ProfileName $PackageProfile
+
+    # Custom node set: explicit request > set recorded for this instance > 'default'.
+    if (-not $CustomNodeSet) {
+        $recordedSet = if ($priorState -and $priorState.PSObject.Properties['customNodeSet']) { [string]$priorState.customNodeSet } else { '' }
+        $CustomNodeSet = if ($recordedSet) { $recordedSet } else { 'default' }
+    }
+    $CustomNodeSet = $CustomNodeSet.ToLowerInvariant()
+    Assert-CustomNodeSet -CustomNodeSet $CustomNodeSet
 
     Invoke-WithLock -LockName "instance-$InstanceName" -Force:$Force -ScriptBlock {
 
@@ -220,13 +238,14 @@ function Invoke-FullInstall {
 
         # Step 8 - Custom nodes
         Write-Step "Installing custom nodes"
-        Invoke-InstallCustomNodes -InstanceName $InstanceName -EnvironmentName $envName
+        Invoke-InstallCustomNodes -InstanceName $InstanceName -EnvironmentName $envName -CustomNodeSet $CustomNodeSet
         Write-StepOk "Custom nodes installed"
 
         # Step 9 - ROCm performance packages (triton, sageattention+patches, bitsandbytes, flash-attn)
         Write-Step "Installing ROCm performance packages"
+        Write-StepInfo "Package profile: $PackageProfile"
         Import-Module (Join-Path $modDir 'RocmRoll.Packages.psm1') -Force -Global
-        Invoke-InstallPackageProfile -ProfileName 'rocm-performance' -EnvironmentName $envName -GfxVersion $gpu.gfx
+        Invoke-InstallPackageProfile -ProfileName $PackageProfile -EnvironmentName $envName -GfxVersion $gpu.gfx
         Write-StepOk "Performance packages installed"
 
         # Apply ComfyUI source patches (non-fatal: patch failures log warnings and do not abort install)
@@ -248,7 +267,7 @@ function Invoke-FullInstall {
         # Write instance state
         $instanceFolder = Join-Path $cfg.InstancesFolder $InstanceName
         Set-InstanceState -Name $InstanceName -Path $instanceFolder -Channel $Channel `
-            -Environment $envName -Status 'ready' `
+            -Environment $envName -Status 'ready' -PackageProfile $PackageProfile -CustomNodeSet $CustomNodeSet `
             -ComfyUI @{ repo=$channelCfg.comfyui.repo; ref=$channelCfg.comfyui.ref; commit=$cloneResult.commit } `
             -Paths @{
                 input  = $cfg.InputFolder

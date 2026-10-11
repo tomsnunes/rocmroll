@@ -105,11 +105,13 @@ function Get-RocmRollCommandDefinitions {
                     $workspaceOpt
                     New-CliOption -Name 'channel' -Value -Meta 'stable|preview|nightly|next|legacy|legacy-staging' -Default 'stable' -Desc 'Select a specific install channel'
                     New-CliOption -Name 'profile' -Value -Meta 'NAME' -Desc 'Select a specific execution profile'
+                    New-CliOption -Name 'package-profile' -Value -Meta 'NAME' -Desc 'Select the package profile to install (default: rocmroll; see package-profiles.json). Kept for later updates'
+                    New-CliOption -Name 'custom-nodes' -Value -Meta 'default|default+optional' -Desc 'Select the custom node set to install (default: default). Kept for later updates'
                     New-CliOption -Name 'gfx' -Value -Meta 'ARCH' -Desc 'Override GPU architecture'
                     New-CliOption -Name 'python' -Value -Meta 'VERSION' -Default '3.12.10' -Desc 'Select a specific Python version'
                     New-CliOption -Name 'force' -Desc 'Force remove and reinstall'
                     New-CliOption -Name 'shared-workflows' -Desc 'Enable shared workflows'
-                ) -Examples @('rocmroll instance install --name rocm-stable', 'rocmroll instance install --name rocm-nightly --channel nightly') -Handler 'Invoke-RocmRollInstanceCommand'
+                ) -Examples @('rocmroll instance install --name rocm-stable', 'rocmroll instance install --name rocm-nightly --channel nightly', 'rocmroll instance install --name rocm-deluxa --package-profile deluxa', 'rocmroll instance install --name rocm-stable --custom-nodes default+optional') -Handler 'Invoke-RocmRollInstanceCommand'
                 update = New-CliSubCommand -Name 'update' -Synopsis 'Update an instance and its components' -Usage 'rocmroll instance update --name NAME [--all|--environment|--rocm|--comfyui] [--force]' -Options (@(
                     $nameReq
                     $workspaceOpt
@@ -565,7 +567,9 @@ function New-CliContext {
         OlderThanDays       = Get-CliValue -ParsedOptions $parsedOptions -Name 'older-than-days'
         PortArg             = Get-CliValue -ParsedOptions $parsedOptions -Name 'port'
         ProfileName         = $profileName
-        PatchId             = Get-CliValue -ParsedOptions $parsedOptions -Name 'patch-id'
+        PackageProfileName  = Get-CliValue -ParsedOptions $parsedOptions -Name 'package-profile'
+        CustomNodeSet       = Get-CliValue -ParsedOptions $parsedOptions -Name 'custom-nodes'
+        PatchId            = Get-CliValue -ParsedOptions $parsedOptions -Name 'patch-id'
         Url                 = Get-CliValue -ParsedOptions $parsedOptions -Name 'url'
         AddUrl              = Get-CliValue -ParsedOptions $parsedOptions -Name 'add'
         DefinitionFile      = Get-CliValue -ParsedOptions $parsedOptions -Name 'file'
@@ -768,6 +772,46 @@ function Test-RocmRollProfileName {
     }
 }
 
+function Test-RocmRollPackageProfileName {
+    param(
+        [string]$PackageProfileName,
+        [string]$ModulesDir
+    )
+
+    if (-not $PackageProfileName) { return }
+
+    Import-Module (Join-Path $ModulesDir 'RocmRoll.Packages.psm1') -Global
+    try {
+        Assert-PackageProfileName -ProfileName $PackageProfileName
+    } catch {
+        Write-Host ''
+        Write-Host "  ERROR  Unknown package profile: '$PackageProfileName'" -ForegroundColor Red
+        Write-Host "  Available package profiles: $((Get-PackageProfileNames) -join ', ')" -ForegroundColor DarkGray
+        Write-Host ''
+        exit 1
+    }
+}
+
+function Test-RocmRollCustomNodeSet {
+    param(
+        [string]$CustomNodeSet,
+        [string]$ModulesDir
+    )
+
+    if (-not $CustomNodeSet) { return }
+
+    Import-Module (Join-Path $ModulesDir 'RocmRoll.CustomNodes.psm1') -Global
+    try {
+        Assert-CustomNodeSet -CustomNodeSet $CustomNodeSet.ToLowerInvariant()
+    } catch {
+        Write-Host ''
+        Write-Host "  ERROR  Unknown custom node set: '$CustomNodeSet'" -ForegroundColor Red
+        Write-Host "  Available custom node sets: $((Get-CustomNodeSetNames) -join ', ')" -ForegroundColor DarkGray
+        Write-Host ''
+        exit 1
+    }
+}
+
 function Invoke-CliParseErrors {
     param([Parameter(Mandatory)][object]$Context)
 
@@ -802,8 +846,16 @@ function Invoke-RocmRollCommand {
         Test-RocmRollProfileName -ProfileName $Context.ProfileName -ModulesDir $Context.ModulesDir
     }
 
+    if ($Context.PackageProfileName -and $Context.Command -eq 'instance' -and $Context.SubCommand -eq 'install') {
+        Test-RocmRollPackageProfileName -PackageProfileName $Context.PackageProfileName -ModulesDir $Context.ModulesDir
+    }
+
+    if ($Context.CustomNodeSet -and $Context.Command -eq 'instance' -and $Context.SubCommand -eq 'install') {
+        Test-RocmRollCustomNodeSet -CustomNodeSet $Context.CustomNodeSet -ModulesDir $Context.ModulesDir
+    }
+
     switch ($Context.Handler) {
-        'Invoke-RocmRollInitCommand'      { Invoke-RocmRollInitCommand -Context $Context }
+        'Invoke-RocmRollInitCommand'    { Invoke-RocmRollInitCommand -Context $Context }
         'Invoke-RocmRollInstanceCommand'  { Invoke-RocmRollInstanceCommand -Context $Context }
         'Invoke-RocmRollDoctorCommand'    { Invoke-RocmRollDoctorCommand -Context $Context }
         'Invoke-RocmRollRocmCommand'      { Invoke-RocmRollRocmCommand -Context $Context }

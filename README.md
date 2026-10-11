@@ -239,7 +239,7 @@ Channels are defined in `source\manifests\channels.json`.
 
 | Channel | ComfyUI ref | ROCm source | Default profile | Notes |
 | --- | --- | --- | --- | --- |
-| `stable` | `v0.36.0` | AMD ROCm 7.2.1 direct URLs | `stable` | Pinned ROCmRoll baseline; Python 3.12 required |
+| `stable` | `v0.39.0` | AMD ROCm 7.2.1 direct URLs | `stable` | Pinned ROCmRoll baseline; Python 3.12 required |
 | `preview` | `master` | `https://rocm.nightlies.amd.com/whl-multi-arch/` | `optimized` | AMD's unified multi-arch wheel index (promoted) |
 | `nightly` | `master` | `https://rocm.nightlies.amd.com/whl-staging-multi-arch/` | `optimized` | Staging multi-arch index; more volatile than preview |
 | `next` | `master` | `https://nightly.repo.amd.com/rocm/whl-next/` | `optimized` | AMD's newest multi-arch index; pre-release packages allowed, more cutting-edge and volatile than `nightly` |
@@ -406,8 +406,8 @@ performs this high-level flow:
 7. Installs ComfyUI `requirements.txt`.
 8. Generates `extra_model_paths.yaml`.
 9. Optionally links workflows to `shared\workflows`.
-10. Installs default custom nodes.
-11. Installs the `rocm-performance` package profile.
+10. Installs the selected custom node set (`default`, or `default+optional` with `--custom-nodes`).
+11. Installs the selected package profile (`rocmroll` by default, or the one given with `--package-profile`).
 12. Applies applicable ComfyUI source patches.
 13. Generates launchers.
 14. Binds the instance path into the environment `_pth` file.
@@ -601,7 +601,9 @@ Common command-specific options:
 | `--name NAME` | Instance aggregate commands, `plan`/`apply`/`destroy`/`import`, and workspace, environment, or profile commands |
 | `--instance NAME` | Doctor, ROCm, ComfyUI, `profile apply`, and patch commands |
 | `--environment`, `--rocm`, `--comfyui`, `--patches`, `--all` | Component scopes listed by instance info/update/repair/remove help |
-| `--profile NAME` | Instance install, launch, and `profile apply` |
+| `--profile NAME` | Instance install, launch, and `profile apply` (execution profile) |
+| `--custom-nodes default\|default+optional` | Instance install: custom node set from `custom-nodes.json`; default `default` |
+| `--package-profile NAME` | Instance install: package profile from `package-profiles.json`; default `rocmroll` |
 | `--force` | Forced install/update/removal, stale install-lock override, or skip repair's managed-file confirmation |
 | `--gfx ARCH`, `--port PORT`, `--url HOST`, `--patch-id ID`, `--shared-workflows` | Specialized commands shown in command help |
 | `--file PATH` | `plan`/`apply`/`destroy`: path to a ComfyUIInstance YAML definition |
@@ -678,19 +680,30 @@ Default custom nodes are defined in `source\manifests\custom-nodes.json` and ins
 instances\<instance>\custom_nodes\
 ```
 
-Current default nodes:
+The manifest has two lists, and `--custom-nodes` chooses which are installed:
 
-- `ComfyUI-Manager`
-- `CFZ-SwitchMenu`
-- `CFZ-Caching`
-- `ComfyUI-HFRemoteVae`
-- `ComfyUI-INT8-Fast-ROCM`
+| `--custom-nodes` | Installs |
+| --- | --- |
+| `default` (default) | The `default` list: `ComfyUI-Manager` |
+| `default+optional` | The `default` list plus the `optional` list: `CFZ-SwitchMenu`, `CFZ-Caching`, `ComfyUI-HFRemoteVae`, `ComfyUI-INT8-Fast-ROCM`, `comfyui-h3-sla-attention-rocm` |
 
-The full install applies the `rocm-performance` profile from `source\manifests\package-profiles.json`.
+```powershell
+.\rocmroll.bat instance install --name rocm-stable --custom-nodes default+optional
+```
 
-Current performance packages:
+An unknown value is rejected before anything is installed. The choice is recorded in instance state (`customNodeSet`), so `instance update`, `instance repair`, `comfyui nodes --install/--update`, and a re-run of `instance install` without the option keep using it. Nodes already installed are never removed when switching back to `default`.
 
-- `triton-windows==3.8.0.post28`
+The full install applies a package profile from `source\manifests\package-profiles.json`. Pick one at install time with `--package-profile`:
+
+```powershell
+.\rocmroll.bat instance install --name rocm-deluxa --package-profile deluxa
+```
+
+Available profiles: `base` (ComfyUI requirements only), `rocmroll` (default), `patientx`, `deluxa`, and `experimental`. An unknown name is rejected before anything is installed. The choice is recorded in instance state (`packageProfile`), so `instance update` and a re-run of `instance install` without the option keep using it. Note this is separate from `--profile`, which selects the launch (execution) profile.
+
+Packages in the default `rocmroll` profile:
+
+- `triton-windows==3.8.0.post29`
 - `sageattention` from a release wheel URL
 - `bitsandbytes` from a release wheel URL
 - `flash-attn` from a release wheel URL

@@ -54,12 +54,16 @@ function Get-InstancePlanDeclaredNodeNames {
         [Parameter(Mandatory)][object]$Definition
     )
 
+    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.CustomNodes.psm1') -Global
+
     $names = New-Object System.Collections.Generic.List[string]
 
     $manifestPath = Join-Path $Config.ManifestsFolder 'custom-nodes.json'
     if (Test-Path -LiteralPath $manifestPath) {
         $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
-        foreach ($node in @($manifest.default)) {
+        # Optional nodes are declared too when the instance was installed with default+optional.
+        $nodeSet = Get-InstanceCustomNodeSet -InstanceName $Definition.Name
+        foreach ($node in @(Get-CustomNodeEntries -Manifest $manifest -CustomNodeSet $nodeSet)) {
             if ($node -and $node.PSObject.Properties['name'] -and $node.name) { $names.Add([string]$node.name) | Out-Null }
         }
     }

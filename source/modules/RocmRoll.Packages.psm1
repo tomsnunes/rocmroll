@@ -26,6 +26,32 @@ function Get-PackageProfileManifest {
     return Get-Content $path -Raw -Encoding UTF8 | ConvertFrom-Json
 }
 
+# Package profile used when none is requested and none is recorded for the instance.
+$script:DefaultPackageProfileName = 'rocmroll'
+
+function Get-DefaultPackageProfileName {
+    return $script:DefaultPackageProfileName
+}
+
+function Get-PackageProfileNames {
+    $manifest = Get-PackageProfileManifest
+    return @($manifest.PSObject.Properties | ForEach-Object { $_.Name })
+}
+
+function Assert-PackageProfileName {
+    <#
+    .SYNOPSIS
+        Throws ROCMROLL-PKG-003 (listing the valid names) when the named package
+        profile is not defined in package-profiles.json.
+    #>
+    param([Parameter(Mandatory = $true)][string]$ProfileName)
+
+    $names = @(Get-PackageProfileNames)
+    if ($names -notcontains $ProfileName) {
+        throw "ROCMROLL-PKG-003: Package profile '$ProfileName' not found in package-profiles.json. Available: $($names -join ', ')"
+    }
+}
+
 function Get-PatchesManifest {
     Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force -Global
     $cfg = Get-Config
@@ -125,13 +151,15 @@ function Invoke-InstallPackageProfile {
     $pythonExe = Get-EnvironmentPython -Name $EnvironmentName
     $envFolder = Join-Path $cfg.EnvironmentsFolder $EnvironmentName
     $manifest = Get-PackageProfileManifest
-    $pkgProfile = $manifest.$ProfileName
+    $profileProp = $manifest.PSObject.Properties[$ProfileName]
 
-    if (-not $pkgProfile) {
-        throw "ROCMROLL-PKG-003: Package profile '$ProfileName' not found in package-profiles.json"
+    if (-not $profileProp) {
+        $available = @($manifest.PSObject.Properties | ForEach-Object { $_.Name }) -join ', '
+        throw "ROCMROLL-PKG-003: Package profile '$ProfileName' not found in package-profiles.json. Available: $available"
     }
+    $pkgProfile = $profileProp.Value
 
-    if (-not $pkgProfile.packages -or $pkgProfile.packages.Count -eq 0) {
+    if (-not $pkgProfile.PSObject.Properties['packages'] -or -not $pkgProfile.packages -or @($pkgProfile.packages).Count -eq 0) {
         Write-LogInfo "Profile '$ProfileName' has no packages; nothing to install." -Comp 'RocmRoll.Packages'
         return
     }
@@ -214,10 +242,11 @@ function Invoke-InstallPackageProfile {
 
         if ($pkg.PSObject.Properties['patches'] -and $pkg.patches) {
             foreach ($patchId in $pkg.patches) {
+                if ([string]::IsNullOrWhiteSpace($patchId)) { continue }
                 Invoke-ApplyPatch -PatchId $patchId -EnvironmentFolder $envFolder
             }
         }
     }
 }
 
-Export-ModuleMember -Function Invoke-InstallPackageProfile, Invoke-ApplyPatch
+Export-ModuleMember -Function Invoke-InstallPackageProfile, Invoke-ApplyPatch, Get-DefaultPackageProfileName, Get-PackageProfileNames, Assert-PackageProfileName
