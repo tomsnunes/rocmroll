@@ -165,7 +165,9 @@ function Set-InstanceState {
         [string]$Status = 'ready',
         [hashtable]$ComfyUI = @{},
         [hashtable]$Paths = @{},
-        [string[]]$CustomNodes = @()
+        [string[]]$CustomNodes = @(),
+        [string]$PackageProfile = '',
+        [string]$CustomNodeSet = ''
     )
     Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Config.psm1') -Force -Global
     $cfg = Get-Config
@@ -174,6 +176,8 @@ function Set-InstanceState {
         type        = 'comfyui-instance'
         name        = $Name
         channel     = $Channel
+        packageProfile = $PackageProfile
+        customNodeSet  = $CustomNodeSet
         path        = $Path
         environment = $Environment
         comfyui     = $ComfyUI

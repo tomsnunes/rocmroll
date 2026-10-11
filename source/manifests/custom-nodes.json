@@ -5,7 +5,9 @@
       "repo": "https://github.com/Comfy-Org/ComfyUI-Manager",
       "ref": "main",
       "installRequirements": true
-    },
+    }
+  ],
+  "optional": [
     {
       "name": "CFZ-SwitchMenu",
       "repo": "https://github.com/patientx/CFZ-SwitchMenu.git",
@@ -27,6 +29,12 @@
     {
       "name": "ComfyUI-INT8-Fast-ROCM",
       "repo": "https://github.com/patientx/ComfyUI-INT8-Fast-ROCM",
+      "ref": "main",
+      "installRequirements": true
+    },
+    {
+      "name": "comfyui-h3-sla-attention-rocm",
+      "repo": "https://github.com/patientx/comfyui-h3-sla-attention-rocm",
       "ref": "main",
       "installRequirements": true
     }

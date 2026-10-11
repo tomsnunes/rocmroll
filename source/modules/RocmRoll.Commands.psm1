@@ -260,7 +260,7 @@ function Invoke-RocmRollInstanceInstallCommand {
     Import-RocmRollCommandModules -ModulesDir $Context.ModulesDir -Names @('RocmRoll.Core')
     Invoke-FullInstall -InstanceName $Context.InstanceName -Channel $Context.Channel `
         -PythonVersion $Context.PythonVersion -GfxOverride $Context.GfxOverride `
-        -ProfileName $Context.ProfileName -Force:$Context.FlagForce `
+        -ProfileName $Context.ProfileName -PackageProfile $Context.PackageProfileName -CustomNodeSet $Context.CustomNodeSet -Force:$Context.FlagForce `
         -SharedWorkflows:$Context.FlagSharedWorkflows
 }
 

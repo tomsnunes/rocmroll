@@ -3,12 +3,50 @@
     "description": "ComfyUI requirements only",
     "packages": []
   },
-  "rocm-performance": {
+  "rocmroll": {
     "description": "ROCm performance acceleration packages",
     "packages": [
       {
         "name": "triton-windows",
-        "version": "3.8.0.post28",
+        "version": "3.8.0.post29",
+        "source": "pypi",
+        "required": true
+      },
+      {
+        "name": "sageattention",
+        "source": "url",
+        "url": "https://github.com/thehybrid1337/sageattention-rocm-gfx1201-win/releases/download/v2.2.0-rocm10.2-20260921/sageattention-2.2.0-cp312-cp312-win_amd64.whl",
+        "required": true,
+        "patches": [""]
+      },
+      {
+        "name": "bitsandbytes",
+        "source": "url",
+        "url": "https://github.com/0xDELUXA/bitsandbytes_win_rocm/releases/download/0.50.2.dev0-py3.12-rocm7.16-win_amd64_all/bitsandbytes-0.50.2.dev0-cp312-cp312-win_amd64.whl",
+        "required": true,
+        "skipArchitectures": [""]
+      },
+      {
+        "name": "flash-attn",
+        "source": "url",
+        "url": "https://github.com/0xDELUXA/flash-attention/releases/download/v2.8.4_win-rocm/flash_attn-2.8.4-py3-none-win_amd64.whl",
+        "required": true
+      },
+      {
+        "name": "amd-aiter",
+        "source": "url",
+        "url": "https://github.com/0xDELUXA/flash-attention/releases/download/v2.8.4_win-rocm/amd_aiter-0.0.0-py3-none-win_amd64.whl",
+        "required": true,
+        "dependsOn": ["flash-attn"]
+      }
+    ]
+  },
+  "patientx": {
+    "description": "ROCm performance acceleration packages",
+    "packages": [
+      {
+        "name": "triton-windows",
+        "version": "3.7.0.post26",
         "source": "pypi",
         "required": true
       },
@@ -22,7 +60,45 @@
       {
         "name": "bitsandbytes",
         "source": "url",
-        "url": "https://github.com/0xDELUXA/bitsandbytes_win_rocm/releases/download/0.50.0.dev0-py3.12-rocm7.15-win_amd64_all/bitsandbytes-0.50.0.dev0-cp312-cp312-win_amd64.whl",
+        "url": "https://github.com/0xDELUXA/bitsandbytes_win_rocm/releases/download/0.50.2.dev0-py3.12-rocm7.16-win_amd64_all/bitsandbytes-0.50.2.dev0-cp312-cp312-win_amd64.whl",
+        "required": true,
+        "skipArchitectures": [""]
+      },
+      {
+        "name": "flash-attn",
+        "source": "url",
+        "url": "https://github.com/0xDELUXA/flash-attention/releases/download/v2.8.4_win-rocm/flash_attn-2.8.4-py3-none-win_amd64.whl",
+        "required": true
+      },
+      {
+        "name": "amd-aiter",
+        "source": "url",
+        "url": "https://github.com/0xDELUXA/flash-attention/releases/download/v2.8.4_win-rocm/amd_aiter-0.0.0-py3-none-win_amd64.whl",
+        "required": true,
+        "dependsOn": ["flash-attn"]
+      }
+    ]
+  },
+  "deluxa": {
+    "description": "ROCm performance acceleration packages",
+    "packages": [
+      {
+        "name": "triton-windows",
+        "version": "3.8.0.post29",
+        "source": "pypi",
+        "required": true
+      },
+      {
+        "name": "sageattention",
+        "source": "url",
+        "url": "https://github.com/0xDELUXA/SageAttention/releases/download/v2.2.0-windows-rocm.post1/sageattention-2.2.0+rocm7.13torch2.10.0andhigher-cp310-abi3-win_amd64.whl",
+        "required": true,
+        "patches": ["sageattention-zluda-rdna"]
+      },
+      {
+        "name": "bitsandbytes",
+        "source": "url",
+        "url": "https://github.com/0xDELUXA/bitsandbytes_win_rocm/releases/download/0.50.2.dev0-py3.12-rocm7.16-win_amd64_all/bitsandbytes-0.50.2.dev0-cp312-cp312-win_amd64.whl",
         "required": true,
         "skipArchitectures": [""]
       },

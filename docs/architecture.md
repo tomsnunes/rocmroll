@@ -263,8 +263,8 @@ The flow is:
 8. Install ComfyUI `requirements.txt`.
 9. Generate `extra_model_paths.yaml`.
 10. Optionally link instance workflows to `shared\workflows`.
-11. Install default custom nodes.
-12. Install the `rocm-performance` package profile.
+11. Install the selected custom node set (`--custom-nodes`, default `default`).
+12. Install the selected package profile (`--package-profile`, default `rocmroll`).
 13. Apply applicable ComfyUI source patches.
 14. Generate launchers and bind the instance path into the environment `_pth` file.
 15. Write instance/environment state and optionally register with ComfyUI Desktop.
@@ -281,7 +281,7 @@ Channels live in `source\manifests\channels.json`.
 
 | Channel | ComfyUI ref | ROCm source | Default profile | Notes |
 | --- | --- | --- | --- | --- |
-| `stable` | `v0.35.0` | AMD ROCm 7.2.1 direct URLs | `stable` | Pinned release wheels tagged `cp312`; requires Python 3.12 |
+| `stable` | `v0.39.0` | AMD ROCm 7.2.1 direct URLs | `stable` | Pinned release wheels tagged `cp312`; requires Python 3.12 |
 | `preview` | `master` | `https://rocm.nightlies.amd.com/whl-multi-arch/` | `optimized` | Promoted multi-arch wheel index; GPU selection via pip extras, not a per-family URL |
 | `nightly` | `master` | `https://rocm.nightlies.amd.com/whl-staging-multi-arch/` | `optimized` | Staging multi-arch index; same mechanism as preview, more volatile |
 | `next` | `master` | `https://nightly.repo.amd.com/rocm/whl-next/` | `optimized` | AMD's newest multi-arch index; pre-release packages allowed, more volatile than nightly |
@@ -392,17 +392,23 @@ The generated launcher currently omits ComfyUI `--user-directory` because of a k
 
 Default custom nodes are defined in `source\manifests\custom-nodes.json` and installed into each instance's `custom_nodes` folder.
 
-Current default nodes:
+The manifest has a `default` list and an `optional` list. `instance install --custom-nodes default|default+optional` selects the set (default: `default`). The choice is validated up front, recorded as `customNodeSet` in instance state, and resolved inside `Invoke-InstallCustomNodes`, so update, repair, and `comfyui nodes` honor it too. The plan's unmanaged-node check also counts the optional nodes as declared for instances installed with `default+optional`.
+
+Current `default` nodes:
 
 - `ComfyUI-Manager`
+
+Current `optional` nodes:
+
 - `CFZ-SwitchMenu`
 - `CFZ-Caching`
 - `ComfyUI-HFRemoteVae`
 - `ComfyUI-INT8-Fast-ROCM`
+- `comfyui-h3-sla-attention-rocm`
 
-Performance packages are defined in `source\manifests\package-profiles.json`. The full install applies `rocm-performance`, which currently contains:
+Performance packages are defined in `source\manifests\package-profiles.json`. The full install applies the package profile chosen with `instance install --package-profile NAME` (default `rocmroll`; the choice is validated up front, recorded as `packageProfile` in instance state, and reused by later updates). The default profile currently contains:
 
-- `triton-windows==3.8.0.post28`
+- `triton-windows==3.8.0.post29`
 - `sageattention==1.0.6`
 - `bitsandbytes` from a release wheel URL, skipped on `gfx90X`, `gfx94X`, and `gfx950`
 - `flash-attn` from a release wheel URL

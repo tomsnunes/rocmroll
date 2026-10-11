@@ -35,12 +35,22 @@ function Invoke-RepairPythonEnvironment {
     param(
         [string]$EnvironmentName,
         [string]$RuntimeVersion,
-        [string]$InstanceName
+        [string]$InstanceName,
+        [hashtable]$PreRepairGpu = @{}
     )
 
     Import-Module (Join-Path $PSScriptRoot 'RocmRoll.Environment.psm1') -Force
     Invoke-CreateEnvironment -Name $EnvironmentName -RuntimeVersion $RuntimeVersion -Force | Out-Null
     Set-EnvironmentInstancePath -EnvironmentName $EnvironmentName -InstanceName $InstanceName
+
+    if ($PreRepairGpu.Count -gt 0 -and ($PreRepairGpu.ContainsKey('gfx')) -and $PreRepairGpu['gfx']) {
+        # Invoke-CreateEnvironment -Force rebuilds the env from the runtime copy and resets its
+        # state, dropping the previously detected GPU (gfx family, rocmIndex, ...). The hardware
+        # hasn't changed, so restore it instead of leaving it blank - architecture-gated ComfyUI
+        # patches (Test-ComfyPatchApplicable) key off environment-state gpu.gfx.
+        $envState = Get-EnvironmentState -Name $EnvironmentName
+        Set-EnvironmentState -Name $EnvironmentName -Path $envState.path -RuntimeVersion $RuntimeVersion -Status 'ready' -Gpu $PreRepairGpu
+    }
 }
 
 function Resolve-RepairRocmIndex {
@@ -263,10 +273,10 @@ function Invoke-RepairComponent {
 
     switch ($Component) {
         'python-runtime' { Invoke-RepairPythonRuntime -RuntimeVersion $runtimeVersion }
-        'python-env'     { Invoke-RepairPythonEnvironment -EnvironmentName $state.environment -RuntimeVersion $runtimeVersion -InstanceName $InstanceName }
+        'python-env'     { Invoke-RepairPythonEnvironment -EnvironmentName $state.environment -RuntimeVersion $runtimeVersion -InstanceName $InstanceName -PreRepairGpu $preRepairGpu }
         'rocm'           {
             if (-not $preRepairEnvPath -or -not (Test-Path -LiteralPath $preRepairEnvPath)) {
-                Invoke-RepairPythonEnvironment -EnvironmentName $state.environment -RuntimeVersion $runtimeVersion -InstanceName $InstanceName
+                Invoke-RepairPythonEnvironment -EnvironmentName $state.environment -RuntimeVersion $runtimeVersion -InstanceName $InstanceName -PreRepairGpu $preRepairGpu
             }
             Invoke-RepairRocmPackages -InstanceName $InstanceName -InstanceState $state -RuntimeVersion $runtimeVersion -PreRepairGpu $preRepairGpu
         }
@@ -275,7 +285,7 @@ function Invoke-RepairComponent {
         'launchers'      { Invoke-RepairLaunchers -InstanceName $InstanceName -InstanceState $state -ProfileName $ProfileName }
         'patches'        { Invoke-RepairComfyPatches -InstanceName $InstanceName -GpuState $preRepairGpu }
         'all' {
-            Invoke-RepairPythonEnvironment -EnvironmentName $state.environment -RuntimeVersion $runtimeVersion -InstanceName $InstanceName
+            Invoke-RepairPythonEnvironment -EnvironmentName $state.environment -RuntimeVersion $runtimeVersion -InstanceName $InstanceName -PreRepairGpu $preRepairGpu
             Invoke-RepairRocmPackages -InstanceName $InstanceName -InstanceState $state -RuntimeVersion $runtimeVersion -PreRepairGpu $preRepairGpu
             Invoke-RepairComfyUi -InstanceName $InstanceName -EnvironmentName $state.environment -InstanceState $state -SharedWorkflows:$SharedWorkflows -Force:$Force
             Invoke-RepairCustomNodes -InstanceName $InstanceName -EnvironmentName $state.environment

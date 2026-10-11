@@ -17,6 +17,54 @@ function Get-CustomNodesManifest {
     return Get-Content $path -Raw -Encoding UTF8 | ConvertFrom-Json
 }
 
+# Selectable sets from custom-nodes.json: 'default' installs the "default" list,
+# 'default+optional' also installs the "optional" list.
+$script:CustomNodeSets = @('default', 'default+optional')
+
+function Get-CustomNodeSetNames {
+    return @($script:CustomNodeSets)
+}
+
+function Assert-CustomNodeSet {
+    param([Parameter(Mandatory = $true)][string]$CustomNodeSet)
+
+    if ($script:CustomNodeSets -notcontains $CustomNodeSet) {
+        throw "ROCMROLL-NODES-002: Unknown custom node set '$CustomNodeSet'. Available: $($script:CustomNodeSets -join ', ')"
+    }
+}
+
+function Get-InstanceCustomNodeSet {
+    <#
+    .SYNOPSIS
+        The custom node set recorded for an instance, or 'default' when none is recorded.
+    #>
+    param([string]$InstanceName)
+
+    Import-Module (Join-Path $PSScriptRoot 'RocmRoll.State.psm1') -Global
+    $state = Get-InstanceState -Name $InstanceName
+    if ($state -and $state.PSObject.Properties['customNodeSet'] -and $state.customNodeSet) {
+        return [string]$state.customNodeSet
+    }
+    return 'default'
+}
+
+function Get-CustomNodeEntries {
+    <#
+    .SYNOPSIS
+        The manifest node entries for a node set ('default' or 'default+optional').
+    #>
+    param(
+        [Parameter(Mandatory = $true)][object]$Manifest,
+        [Parameter(Mandatory = $true)][string]$CustomNodeSet
+    )
+
+    $nodes = @($Manifest.default)
+    if ($CustomNodeSet -eq 'default+optional' -and $Manifest.PSObject.Properties['optional']) {
+        $nodes += @($Manifest.optional)
+    }
+    return $nodes
+}
+
 function Invoke-ProcessNodeEntry {
     param(
         [pscustomobject]$Node,
@@ -72,6 +120,7 @@ function Invoke-InstallCustomNodes {
     param(
         [string]$InstanceName,
         [string]$EnvironmentName,
+        [string]$CustomNodeSet = '',
         [switch]$Update,
         [switch]$RequirementsOnly
     )
@@ -89,8 +138,14 @@ function Invoke-InstallCustomNodes {
         New-Item -ItemType Directory -Path $nodesFolder -Force | Out-Null
     }
 
+    # Explicit set > set recorded for this instance > 'default'.
+    if (-not $CustomNodeSet) { $CustomNodeSet = Get-InstanceCustomNodeSet -InstanceName $InstanceName }
+    $CustomNodeSet = $CustomNodeSet.ToLowerInvariant()
+    Assert-CustomNodeSet -CustomNodeSet $CustomNodeSet
+
     $manifest = Get-CustomNodesManifest
-    $nodes    = $manifest.default
+    $nodes    = Get-CustomNodeEntries -Manifest $manifest -CustomNodeSet $CustomNodeSet
+    Write-LogInfo "Custom node set: $CustomNodeSet" -Comp 'RocmRoll.CustomNodes' -Inst $InstanceName
 
     $env:PYTHONHOME                    = ''
     $env:PYTHONPATH                    = ''
@@ -181,4 +236,4 @@ function Invoke-InstallNodeFromUrl {
     Write-LogSuccess "Custom node '$nodeName' installed (commit: $commit)" -Comp 'RocmRoll.CustomNodes' -Inst $InstanceName
 }
 
-Export-ModuleMember -Function Get-CustomNodesManifest, Invoke-InstallCustomNodes, Invoke-InstallNodeFromUrl
+Export-ModuleMember -Function Get-CustomNodesManifest, Invoke-InstallCustomNodes, Invoke-InstallNodeFromUrl, Get-CustomNodeSetNames, Assert-CustomNodeSet, Get-InstanceCustomNodeSet, Get-CustomNodeEntries

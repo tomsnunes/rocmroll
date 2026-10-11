@@ -165,7 +165,7 @@ chore: bump sageattention to 1.0.7 in package-profiles.json
 
 ## Adding Custom Nodes
 
-Default custom nodes are defined in `source\manifests\custom-nodes.json`.
+Custom nodes are defined in `source\manifests\custom-nodes.json`: add always-installed nodes to `default` and opt-in nodes to `optional` (installed with `instance install --custom-nodes default+optional`).
 
 To propose a new default node:
 
